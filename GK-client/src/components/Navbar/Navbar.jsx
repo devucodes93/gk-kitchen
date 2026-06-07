@@ -1,8 +1,7 @@
-<<<<<<< HEAD
 import React, { useState, useEffect } from "react";
-=======
 import React, { useState } from "react";
->>>>>>> 547625ef85ec76d0f0db92782f79f7b144b63626
+
+
 import { GiHamburgerMenu } from "react-icons/gi";
 import { MdOutlineRestaurantMenu } from "react-icons/md";
 import images from "../../constants/images";
@@ -19,7 +18,6 @@ const NAV_LINKS = [
 ];
 
 const Navbar = () => {
-<<<<<<< HEAD
   const [toggleMenu, setToggleMenu] = useState(false);
   const [isLight, setIsLight] = useState(false);
   const [navStyle, setNavStyle] = useState("solid");
@@ -147,7 +145,11 @@ const Navbar = () => {
         )}
       </div>
     </nav>
-=======
+  const [toggleMenu, setToggleMenu] = React.useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  return (
+
+const Navbar = () => {
   const [toggleMenu, setToggleMenu] = React.useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   return (
@@ -235,7 +237,7 @@ const Navbar = () => {
       </nav>
       <Login isLoginOpen={isLoginOpen} setIsLoginOpen={setIsLoginOpen} />
     </>
->>>>>>> 547625ef85ec76d0f0db92782f79f7b144b63626
+
   );
 };
 
