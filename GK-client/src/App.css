@@ -7,7 +7,18 @@
   justify-content: center;
   align-items: center;
 }
-
+body,
+#root {
+  background-color: var(--color-black);
+  margin: 0;
+  padding: 0;
+}
+body {
+  padding-top: 80px;
+}
+#home {
+  padding-top: 80px;
+}
 .app__bg {
   background: url("./assets/bg.png");
   background-position: center;
@@ -73,7 +84,9 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: capitalize;
-  font-feature-settings: "tnum" on, "lnum" on;
+  font-feature-settings:
+    "tnum" on,
+    "lnum" on;
   line-height: 29.9px;
   font-size: 23px;
 }
@@ -174,4 +187,36 @@
     font-size: 45px;
     line-height: 70px;
   }
+}
+
+/* Scroll reveal animations */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px) scale(0.995);
+  transition:
+    opacity 700ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.reveal.reveal--visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.reveal[data-reveal-delay] {
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+/* Stagger helpers */
+.reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(18px);
+}
+.reveal-stagger.reveal--visible > * {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    transform 600ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 600ms ease;
 }

@@ -20,8 +20,11 @@ const Footer = () => {
   };
 
   return (
-    <div className="app__footer section__padding" id="login" style
-     ={{ position: "relative", overflow: "hidden" }}>
+    <div
+      className="app__footer section__padding"
+      id="login"
+      style={{ position: "relative", overflow: "hidden" }}
+    >
       <FooterOverlay />
 
       {/* Styled Club Section wrapped with Golden Borders, Macha! */}
@@ -37,13 +40,12 @@ const Footer = () => {
           border: "1px solid rgba(220, 202, 135, 0.2)",
           width: "100%",
           maxWidth: "850px",
-         
+
           margin: "0 auto 4rem auto",
         }}
       >
         {/* Top-left corner */}
-              {/* Bottom-right corner */}
-    
+        {/* Bottom-right corner */}
 
         <h1 className="app__footer-headtext">Join the Elite Club</h1>
         <p className="p__opensans">

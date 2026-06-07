@@ -55,7 +55,12 @@ const SignatureDishes = () => {
         {menuItems.map((item, index) => (
           <div className="signature-card" key={index}>
             <div className="signature-img-wrapper">
-              <img src={item.img} alt={item.name} className="signature-img" loading="lazy" />
+              <img
+                src={item.img}
+                alt={item.name}
+                className="signature-img"
+                loading="lazy"
+              />
             </div>
             <div className="signature-content">
               <div className="item-title-row">
