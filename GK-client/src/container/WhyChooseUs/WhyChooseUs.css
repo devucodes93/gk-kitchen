@@ -1,0 +1,171 @@
+.app__whychooseus {
+  background-color: var(--color-black);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app__whychooseus-title {
+  text-align: center;
+  margin-bottom: 4rem;
+}
+
+.app__whychooseus-title p {
+  color: var(--color-golden);
+  margin-top: 1rem;
+}
+
+/* Base Desktop Settings */
+.desktop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 2rem;
+  width: 100%;
+  max-width: 1200px;
+}
+
+.mobile-carousel-wrapper {
+  display: none; /* Hidden on laptop/desktop */
+}
+
+.whychooseus-card {
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.92)), var(--card-bg);
+  background-size: cover;
+  background-position: center;
+  border: 1px solid transparent;
+  padding: 3rem 2rem;
+  border-radius: 8px;
+  position: relative;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.whychooseus-card:hover {
+  transform: translateY(-5px);
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.85)), var(--card-bg);
+  border-color: var(--color-golden);
+}
+
+.card-accent-line {
+  width: 40px;
+  height: 2px;
+  background-color: var(--color-golden);
+  margin-bottom: 1.5rem;
+}
+
+.card-title {
+  font-family: var(--font-base);
+  color: var(--color-white);
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  letter-spacing: 0.04em;
+}
+
+.card-desc {
+  color: var(--color-grey);
+  font-size: 12px !important;
+  line-height: 1.6;
+}
+
+/* Responsive Touchdown for Phones */
+@media screen and (max-width: 768px) {
+  .desktop-grid {
+    display: none; /* Kill the grid layout on phones */
+  }
+
+  .mobile-carousel-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    width: 100%;
+    max-width: 450px;
+    padding: 0 1rem;
+  }
+
+  .mobile-carousel-slider {
+    width: 100%;
+    overflow: hidden;
+    border-radius: 12px;
+  }
+
+  .mobile-carousel-track {
+    display: flex;
+    width: 100%;
+    transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1); /* Ultra slick glide animation */
+  }
+
+  .mobile-card {
+    min-width: 100%;
+    box-sizing: border-box;
+    opacity: 0.3;
+    transform: scale(0.9);
+    transition: all 0.6s ease;
+  }
+
+  /* Super cool premium zoom-in fade effect for active slide */
+  .mobile-card.active-slide {
+    opacity: 1;
+    transform: scale(1);
+    border-color: rgba(214, 165, 94, 0.4);
+  }
+
+  /* Navigation Arrows styling */
+  .carousel-btn {
+    position: absolute;
+    top: 40%;
+    transform: translateY(-50%);
+    background: rgba(12, 12, 12, 0.8);
+    border: 1px solid var(--color-golden);
+    color: var(--color-golden);
+    font-size: 18px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+  }
+
+  .carousel-btn:active {
+    background: var(--color-golden);
+    color: var(--color-black);
+  }
+
+  .carousel-btn.prev {
+    left: -10px;
+  }
+  .carousel-btn.next {
+    right: -10px;
+  }
+
+  /* Dots Indicators styling */
+  .carousel-dots {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .dot.active {
+    background: var(--color-golden);
+    width: 24px; /* Long pill stretch effect on selection */
+    border-radius: 4px;
+  }
+}

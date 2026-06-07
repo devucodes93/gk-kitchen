@@ -1,0 +1,138 @@
+.app__signature {
+  background-color: #f5ebe6; /* Matches the clean cream background in your image */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.app__signature-title {
+  text-align: left;
+  width: 100%;
+  max-width: 1200px;
+  margin-bottom: 4rem;
+}
+
+.app__signature-title .p__cormorant {
+  color: #c48a55;
+  letter-spacing: 0.15em;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.headtext__cormorant {
+  font-family: var(--font-base);
+  color: #3c2317; /* Dark elegant brown text */
+  font-size: 48px;
+  margin-top: 0.5rem;
+}
+
+.app__signature-title .text-desc {
+  color: #7a6e67;
+  margin-top: 1rem;
+  max-width: 550px;
+  font-size: 15px;
+}
+
+.app__signature-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* Strict 3-column setup on desktop */
+  gap: 3rem 2rem;
+  width: 100%;
+  max-width: 1200px;
+}
+
+.signature-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.signature-img-wrapper {
+  width: 100%;
+  height: 380px;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.signature-img-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.signature-content {
+  margin-top: 1.2rem;
+}
+
+.item-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+/* Green and Red dots from the menu sheet */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.status-dot.veg {
+  background-color: #279e53;
+}
+.status-dot.non-veg {
+  background-color: #c93232;
+}
+
+.item-name {
+  font-family: var(--font-base);
+  color: #3c2317;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.item-desc {
+  color: #7a6e67;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-top: 0.5rem;
+  padding-left: 1rem; /* Aligns description cleanly next to the dot */
+}
+
+/* Perfect outlined button from image_84696e.jpg */
+.signature-action {
+  margin-top: 5rem;
+}
+
+.explore-menu-btn {
+  background: transparent;
+  color: #3c2317;
+  border: 1px solid #3c2317;
+  padding: 0.8rem 2.5rem;
+  font-family: var(--font-base);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.explore-menu-btn:hover {
+  background: #3c2317;
+  color: #ffffff;
+}
+
+/* Responsive Grid setup */
+@media screen and (max-width: 950px) {
+  .app__signature-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .app__signature-container {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "apify-client": "^2.23.4",
+    "axios": "^1.17.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "rss-parser": "^3.13.0"
+  }
+}
