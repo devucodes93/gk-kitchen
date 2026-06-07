@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 
 const LazyImage = ({ src, alt, className, style, placeholder, ...props }) => {
   const imgRef = useRef();
@@ -6,7 +6,7 @@ const LazyImage = ({ src, alt, className, style, placeholder, ...props }) => {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if ('loading' in HTMLImageElement.prototype) {
+    if ("loading" in HTMLImageElement.prototype) {
       // browser supports native lazy loading
       setInView(true);
       return;
@@ -21,7 +21,7 @@ const LazyImage = ({ src, alt, className, style, placeholder, ...props }) => {
           }
         });
       },
-      { rootMargin: '200px' }
+      { rootMargin: "200px" },
     );
 
     if (imgRef.current) observer.observe(imgRef.current);
@@ -30,7 +30,7 @@ const LazyImage = ({ src, alt, className, style, placeholder, ...props }) => {
   }, []);
 
   return (
-    <div ref={imgRef} style={{ display: 'inline-block', ...style }}>
+    <div ref={imgRef} style={{ display: "inline-block", ...style }}>
       {!loaded && placeholder}
       {inView && (
         <img
@@ -39,7 +39,7 @@ const LazyImage = ({ src, alt, className, style, placeholder, ...props }) => {
           className={className}
           loading="lazy"
           onLoad={() => setLoaded(true)}
-          style={loaded ? {} : { display: 'none' }}
+          style={loaded ? {} : { display: "none" }}
           {...props}
         />
       )}

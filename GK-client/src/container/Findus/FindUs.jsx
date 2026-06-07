@@ -71,11 +71,11 @@ const FindUs = () => {
           }}
         />
         <img
-          src={ images.contact}
+          src={images.contact}
           alt="findus_img"
           style={{ paddingTop: "20px" }}
-            loading="lazy"
-          />
+          loading="lazy"
+        />
       </div>
     </div>
   );

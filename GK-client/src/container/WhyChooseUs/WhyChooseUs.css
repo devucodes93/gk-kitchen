@@ -14,7 +14,7 @@
 }
 
 .app__whychooseus-title p {
-  color: var(--color-golden);
+  color: var(--color-white);
   margin-top: 1rem;
 }
 
@@ -48,6 +48,14 @@
   background:
     linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.85)), var(--card-bg);
   border-color: var(--color-golden);
+}.app__whychooseus-title h1 {
+  color: var(--color-golden) !important;
+}
+
+.app__whychooseus-title p {
+  color: var(--color-white);
+  margin-top: 1rem;
+  opacity: 1 !important;
 }
 
 .card-accent-line {
@@ -56,7 +64,10 @@
   background-color: var(--color-golden);
   margin-bottom: 1.5rem;
 }
-
+#about {
+  background-color: var(--color-black);
+  margin-top: 0;
+}
 .card-title {
   font-family: var(--font-base);
   color: var(--color-white);
