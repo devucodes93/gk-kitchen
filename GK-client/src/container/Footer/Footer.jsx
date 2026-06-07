@@ -3,6 +3,7 @@ import { FiFacebook, FiTwitter, FiInstagram } from "react-icons/fi";
 import { FooterOverlay } from "../../components";
 import { images } from "../../constants";
 import "./Footer.css";
+import { createAccount } from "../../api/api";
 
 const Footer = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,10 +14,27 @@ const Footer = () => {
     favDish: "",
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("MERN Payload Ready, Macha!", formData);
-    setIsOpen(false);
+
+    try {
+      const response = await createAccount(formData);
+
+      alert("Account Created Successfully!");
+
+      setFormData({
+        name: "",
+        phone: "",
+        birthday: "",
+        favDish: "",
+      });
+
+      setIsOpen(false);
+    } catch (error) {
+      console.error(error);
+
+      alert(error.response?.data?.message || "Something went wrong");
+    }
   };
 
   return (
@@ -148,9 +166,11 @@ const Footer = () => {
                 fontSize: "32px",
                 marginBottom: "1.5rem",
                 textAlign: "center",
+                color: "gold",
+                textDecoration: "underline",
               }}
             >
-              Create Account
+              Stay Updated
             </h2>
             <form
               onSubmit={handleSubmit}
@@ -171,6 +191,7 @@ const Footer = () => {
                   color: "#fff",
                   outline: "none",
                 }}
+                value={formData.name}
                 onChange={(e) =>
                   setFormData({ ...formData, name: e.target.value })
                 }
@@ -186,6 +207,7 @@ const Footer = () => {
                   color: "#fff",
                   outline: "none",
                 }}
+                value={formData.phone}
                 onChange={(e) =>
                   setFormData({ ...formData, phone: e.target.value })
                 }
@@ -210,6 +232,7 @@ const Footer = () => {
                     color: "#fff",
                     outline: "none",
                   }}
+                  value={formData.birthday}
                   onChange={(e) =>
                     setFormData({ ...formData, birthday: e.target.value })
                   }
@@ -225,6 +248,7 @@ const Footer = () => {
                   color: "#fff",
                   outline: "none",
                 }}
+                value={formData.favDish}
                 onChange={(e) =>
                   setFormData({ ...formData, favDish: e.target.value })
                 }

@@ -4,10 +4,30 @@ const axios = require("axios");
 const { ApifyClient } = require("apify-client");
 const dotenv = require("dotenv");
 dotenv.config();
+
+const pool = require('./src/config/db.js');
+const userRoutes = require("./src/routes/signupRoutes");
+
+
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 const client = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+
+
+// Postgressql connection method
+(async () => {
+  try {
+    await pool.query('SELECT 1');
+    console.log('✅ PostgreSQL Database Connected');
+  } catch (err) {
+    console.error('❌ PostgreSQL Database Connection Failed');
+    console.error(err.message);
+  }
+})();
+
+
 
 // Cache so you don't re-run the actor on every page load
 let cachedPosts = [];
@@ -50,6 +70,11 @@ async function fetchFromApify() {
   return cachedPosts;
 }
 
+
+
+
+
+
 app.get("/api/instagram-feed", async (req, res) => {
   try {
     const posts = await fetchFromApify();
@@ -60,7 +85,7 @@ app.get("/api/instagram-feed", async (req, res) => {
   }
 });
 
-// ✅ Image proxy route — avoids CORS + expired URL issues
+//  Image proxy route — avoids CORS + expired URL issues
 app.get("/api/proxy-image", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).send("Missing url param");
@@ -80,5 +105,7 @@ app.get("/api/proxy-image", async (req, res) => {
     res.status(500).send("Image fetch failed");
   }
 });
+
+app.use("/api", userRoutes);
 
 app.listen(5000, () => console.log("Server running on port 5000"));
