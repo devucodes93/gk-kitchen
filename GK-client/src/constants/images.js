@@ -23,6 +23,12 @@ import icon from '../assets/icon.png';
 import thali from '../assets/thali.png';
 import biriyani from '../assets/food/chicken-biriyani.png';
 import contact from '../assets/contactus.png';
+import bonelss from '../assets/food/Boneless.png';
+import mutton from '../assets/food/Mutton.png';
+import karivepaku from '../assets/food/Karvepaku.png';
+import tikka from '../assets/food/Tikka.png';
+import panner_tikka from '../assets/food/panner_tikka.png';
+import butterchickenmasal from '../assets/food/butterchickenmasal.png';
 
 export default {
   bg,
@@ -51,4 +57,10 @@ export default {
   sign,
   quote,
   icon,
+  bonelss,
+  mutton,
+  karivepaku,
+  tikka,
+  panner_tikka,
+  butterchickenmasal
 };

@@ -1,5 +1,5 @@
 .app__signature {
-  background-color: #f5ebe6; /* Matches the clean cream background in your image */
+  background-color: #f5ebe6;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -21,7 +21,7 @@
 
 .headtext__cormorant {
   font-family: var(--font-base);
-  color: #3c2317; /* Dark elegant brown text */
+  color: #3c2317;
   font-size: 48px;
   margin-top: 0.5rem;
 }
@@ -35,7 +35,7 @@
 
 .app__signature-container {
   display: grid;
-  grid-template-columns: repeat(3, 1fr); /* Strict 3-column setup on desktop */
+  grid-template-columns: repeat(3, 1fr);
   gap: 3rem 2rem;
   width: 100%;
   max-width: 1200px;
@@ -44,23 +44,56 @@
 .signature-card {
   display: flex;
   flex-direction: column;
+  background-color: #fff;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(60, 35, 23, 0.08);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.signature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(60, 35, 23, 0.13);
 }
 
 .signature-img-wrapper {
+  position: relative;
   width: 100%;
-  height: 380px;
+  height: 220px;
   overflow: hidden;
-  border-radius: 2px;
 }
 
 .signature-img-wrapper img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.signature-card:hover .signature-img {
+  transform: scale(1.04);
+}
+
+.price-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(60, 35, 23, 0.82);
+  color: #f5ebe6;
+  font-family: 'Open Sans', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(4px);
 }
 
 .signature-content {
-  margin-top: 1.2rem;
+  padding: 1rem 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .item-title-row {
@@ -69,18 +102,18 @@
   gap: 0.5rem;
 }
 
-/* Green and Red dots from the menu sheet */
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  margin-top: 8px;
+  margin-top: 6px;
   flex-shrink: 0;
 }
 
 .status-dot.veg {
   background-color: #279e53;
 }
+
 .status-dot.non-veg {
   background-color: #c93232;
 }
@@ -88,22 +121,57 @@
 .item-name {
   font-family: var(--font-base);
   color: #3c2317;
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 700;
   line-height: 1.3;
 }
 
 .item-desc {
-  color: #7a6e67;
-  font-size: 14px;
-  line-height: 1.5;
-  margin-top: 0.5rem;
-  padding-left: 1rem; /* Aligns description cleanly next to the dot */
+  color: #524f4f !important;
+  font-size: 13px  !important;
+  line-height: 1.55 !important;
+  margin-top: 0.5rem !important;
+  flex: 1;
 }
 
-/* Perfect outlined button from image_84696e.jpg */
+.item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #ede3dc;
+}
+
+.item-price {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #c48a55;
+  letter-spacing: 0.02em;
+}
+
+.item-type-label {
+  font-family: 'Open Sans', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 20px;
+  color: #fff;
+}
+
+.veg-label {
+  background-color: #279e53;
+}
+
+.nonveg-label {
+  background-color: #c93232;
+}
+
 .signature-action {
-  margin-top: 5rem;
+  margin-top: 4rem;
 }
 
 .explore-menu-btn {
@@ -124,7 +192,21 @@
   color: #ffffff;
 }
 
-/* Responsive Grid setup */
+.signature-card--new {
+  animation: fadeSlideIn 0.4s ease both;
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media screen and (max-width: 950px) {
   .app__signature-container {
     grid-template-columns: repeat(2, 1fr);
@@ -134,5 +216,9 @@
 @media screen and (max-width: 600px) {
   .app__signature-container {
     grid-template-columns: 1fr;
+  }
+
+  .headtext__cormorant {
+    font-size: 34px;
   }
 }
