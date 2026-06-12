@@ -1,19 +1,17 @@
 import React, { useState, useEffect } from "react";
-import React, { useState } from "react";
-
 
 import { GiHamburgerMenu } from "react-icons/gi";
 import { MdOutlineRestaurantMenu } from "react-icons/md";
 import images from "../../constants/images";
 import "./Navbar.css";
 import Login from "../Login/Login";
+import { jwtDecode } from "jwt-decode";
 
 const NAV_LINKS = [
   { label: "Home", href: "#home" },
   { label: "About", href: "#why-us" },
   { label: "Menu", href: "#menu" },
-{ label:"chefs", href:"#chefs"},
-
+  { label: "Chefs", href: "#chefs" },
   { label: "Contact", href: "#contact" },
 ];
 
@@ -22,8 +20,27 @@ const Navbar = () => {
   const [isLight, setIsLight] = useState(false);
   const [navStyle, setNavStyle] = useState("solid");
   const [activeLink, setActiveLink] = useState("#home");
+  const [isLoginOpen, setIsLoginOpen] = useState(false); // Integrated from second snippet
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+
+        if (decoded.exp && decoded.exp * 1000 < Date.now()) {
+          localStorage.removeItem("token");
+          return;
+        }
+
+        setUser(decoded);
+      } catch (err) {
+        console.log(err);
+      }
+    }
+
     const handleScroll = () => {
       const heroSection = document.getElementById("home");
       if (!heroSection) return;
@@ -75,126 +92,104 @@ const Navbar = () => {
         : "navbar--dark";
 
   return (
-    <nav className={`app__navbar ${navClass}`}>
-      <div className="app__navbar-logo">
-        <img src={images.icon} alt="app__logo" loading="lazy" />
-      </div>
-
-      <ul className="app__navbar-links">
-        {NAV_LINKS.map((link) => (
-          <li
-            key={link.href}
-            className={activeLink === link.href ? "active" : ""}
-          >
-            <a href={link.href} onClick={() => setActiveLink(link.href)}>
-              {link.label}
-              <span className="nav-underline" />
-            </a>
-          </li>
-        ))}
-      </ul>
-
-      <div className="app__navbar-login">
-        <a href="#login" className="p__opensans nav-login-link">
-          Log In
-        </a>
-        <div className="nav-divider" />
-        <a href="/" className="nav-book-btn">
-          Book Table
-        </a>
-      </div>
-
-      <div className="app__navbar-smallscreen">
-        <GiHamburgerMenu
-          color={isLight ? "#000" : "#fff"}
-          fontSize={24}
-          onClick={() => setToggleMenu(true)}
-        />
-        {toggleMenu && (
-          <div className="app__navbar-smallscreen_overlay flex__center slide-bottom">
-            <MdOutlineRestaurantMenu
-              fontSize={27}
-              className="overlay__close"
-              onClick={() => setToggleMenu(false)}
-            />
-            <div className="overlay__logo">
-              <img src={images.icon} alt="logo" />
-            </div>
-            <ul className="app__navbar-smallscreen_links">
-              {NAV_LINKS.map((link) => (
-                <li
-                  key={link.href}
-                  className={activeLink === link.href ? "active" : ""}
-                >
-                  <a
-                    href={link.href}
-                    onClick={() => {
-                      setActiveLink(link.href);
-                      setToggleMenu(false);
-                    }}
-                  >
-                    {link.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <a href="/" className="overlay__book-btn">
-              Book a Table
-            </a>
-          </div>
-        )}
-      </div>
-    </nav>
-  const [toggleMenu, setToggleMenu] = React.useState(false);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
-  return (
-
-const Navbar = () => {
-  const [toggleMenu, setToggleMenu] = React.useState(false);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
-  return (
     <>
-      <nav className="app__navbar">
+      <nav className={`app__navbar ${navClass}`}>
         <div className="app__navbar-logo">
           <img src={images.icon} alt="app__logo" loading="lazy" />
         </div>
+
         <ul className="app__navbar-links">
-          <li className="p__opensans">
-            <a href="#home">Home</a>
-          </li>
-          <li className="p__opensans">
-            <a href="#about">About</a>
-          </li>
-          <li className="p__opensans">
-            <a href="#menu">Menu</a>
-          </li>
-          <li className="p__opensans">
-            <a href="#awards">Awards</a>
-          </li>
-          <li className="p__opensans">
-            <a href="#contact">Contact</a>
-          </li>
+          {NAV_LINKS.map((link) => (
+            <li
+              key={link.href}
+              className={activeLink === link.href ? "active" : ""}
+            >
+              <a href={link.href} onClick={() => setActiveLink(link.href)}>
+                {link.label}
+                <span className="nav-underline" />
+              </a>
+            </li>
+          ))}
         </ul>
+
         <div className="app__navbar-login">
-          <a
-            href="#"
-            className="p__opensans"
-            onClick={(e) => {
-              e.preventDefault();
-              setIsLoginOpen(true);
-            }}
-          >
-            Log In / Registration
-          </a>
-          <div />
-          <a href="/" className="p__opensans">
-            Book Table
-          </a>
+          {user ? (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                <img
+                  src={user.picture}
+                  alt="profile"
+                  style={{
+                    width: "42px",
+                    height: "42px",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: "2px solid #DCCA87",
+                  }}
+                />
+
+                {/* <span
+                  style={{
+                    color: "white",
+                    fontSize: "14px",
+                    maxWidth: "180px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {user.email}
+                </span> */}
+              </div>
+
+              <div className="nav-divider" />
+
+              <button
+                onClick={() => {
+                  localStorage.removeItem("token");
+                  window.location.reload();
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#DCCA87",
+                  cursor: "pointer",
+                }}
+              >
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <a
+                href="#login"
+                className="p__opensans nav-login-link"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setIsLoginOpen(true);
+                }}
+              >
+                Log In
+              </a>
+
+              <div className="nav-divider" />
+
+              {/* <a href="/" className="nav-book-btn">
+                Book Table
+              </a> */}
+            </>
+          )}
         </div>
+
         <div className="app__navbar-smallscreen">
           <GiHamburgerMenu
-            color="#fff"
-            fontSize={27}
+            color={isLight ? "#000" : "#fff"}
+            fontSize={24}
             onClick={() => setToggleMenu(true)}
           />
           {toggleMenu && (
@@ -204,40 +199,38 @@ const Navbar = () => {
                 className="overlay__close"
                 onClick={() => setToggleMenu(false)}
               />
+              <div className="overlay__logo">
+                <img src={images.icon} alt="logo" />
+              </div>
               <ul className="app__navbar-smallscreen_links">
-                <li>
-                  <a href="#home" onClick={() => setToggleMenu(false)}>
-                    Home
-                  </a>
-                </li>
-                <li>
-                  <a href="#about" onClick={() => setToggleMenu(false)}>
-                    About
-                  </a>
-                </li>
-                <li>
-                  <a href="#menu" onClick={() => setToggleMenu(false)}>
-                    Menu
-                  </a>
-                </li>
-                <li>
-                  <a href="#awards" onClick={() => setToggleMenu(false)}>
-                    Awards
-                  </a>
-                </li>
-                <li>
-                  <a href="#contact" onClick={() => setToggleMenu(false)}>
-                    Contact
-                  </a>
-                </li>
+                {NAV_LINKS.map((link) => (
+                  <li
+                    key={link.href}
+                    className={activeLink === link.href ? "active" : ""}
+                  >
+                    <a
+                      href={link.href}
+                      onClick={() => {
+                        setActiveLink(link.href);
+                        setToggleMenu(false);
+                      }}
+                    >
+                      {link.label}
+                    </a>
+                  </li>
+                ))}
               </ul>
+              <a href="/" className="overlay__book-btn">
+                Book a Table
+              </a>
             </div>
           )}
         </div>
       </nav>
+
+      {/* Integrated Login Modal Wrapper */}
       <Login isLoginOpen={isLoginOpen} setIsLoginOpen={setIsLoginOpen} />
     </>
-
   );
 };
 
