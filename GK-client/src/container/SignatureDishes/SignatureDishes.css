@@ -48,7 +48,9 @@
   border-radius: 6px;
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(60, 35, 23, 0.08);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
 .signature-card:hover {
@@ -80,7 +82,7 @@
   right: 10px;
   background: rgba(60, 35, 23, 0.82);
   color: #f5ebe6;
-  font-family: 'Open Sans', sans-serif;
+  font-family: "Open Sans", sans-serif;
   font-size: 0.82rem;
   font-weight: 700;
   padding: 4px 10px;
@@ -128,7 +130,7 @@
 
 .item-desc {
   color: #524f4f !important;
-  font-size: 13px  !important;
+  font-size: 13px !important;
   line-height: 1.55 !important;
   margin-top: 0.5rem !important;
   flex: 1;
@@ -144,7 +146,7 @@
 }
 
 .item-price {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: "Cormorant Garamond", serif;
   font-size: 1.2rem;
   font-weight: 700;
   color: #c48a55;
@@ -152,7 +154,7 @@
 }
 
 .item-type-label {
-  font-family: 'Open Sans', sans-serif;
+  font-family: "Open Sans", sans-serif;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -220,5 +222,40 @@
 
   .headtext__cormorant {
     font-size: 34px;
+  }
+  .signature-filters {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.6rem;
+    margin: 1.5rem 0 2rem;
+  }
+
+  .signature-filter-chip {
+    padding: 0.45rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition:
+      background 0.2s ease,
+      color 0.2s ease;
+  }
+
+  .signature-filter-chip--active {
+    background: #e8a33d;
+    color: #171310;
+    border-color: #e8a33d;
+  }
+
+  .signature-card {
+    cursor: pointer;
+  }
+
+  .signature-card--clicked {
+    transform: scale(0.98);
+    transition: transform 0.2s ease;
   }
 }

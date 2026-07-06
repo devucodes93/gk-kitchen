@@ -1,146 +1,60 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./SignatureDishes.css";
-import { images } from "../../constants";
+import { featuredMenu, extraMenu } from "../../constants/menu";
+import OrderScreen from "../../Pages/orderScreen/OrderScreen";
+
+const FILTERS = [
+  { key: null, label: "All" },
+  { key: "biryani", label: "Biryani" },
+  { key: "tandoori", label: "Tandoori & Tikka" },
+  { key: "curries", label: "Curries & Masalas" },
+  { key: "indo-chinese", label: "Indo-Chinese" },
+];
 
 const SignatureDishes = () => {
   const [showAll, setShowAll] = useState(false);
+  const [activeFilter, setActiveFilter] = useState(null);
+  const [justClicked, setJustClicked] = useState(null);
+  const [orderItem, setOrderItem] = useState(null);
 
-  const menuItems = [
-    {
-      name: "Chicken Fry Piece Biryani (Boneless)",
-      desc: "Crispy fried chicken pieces layered into slow-dum basmati. The best of both worlds on one plate.",
-      type: "non-veg",
-      img: images.bonelss,
-      price: 219,
-    },
-    {
-      name: "Mutton Dum Biryani",
-      desc: "Tender mutton slow-cooked under a sealed dum with whole spices and fragrant long-grain rice.",
-      type: "non-veg",
-      img: images.mutton,
-      price: 279,
-    },
-    {
-      name: "Karvepaku Chicken",
-      desc: "Curry-leaf tossed chicken with a crisp, aromatic finish — a regional favourite done right.",
-      type: "non-veg",
-      img: images.karivepaku,
-      price: 199,
-    },
-    {
-      name: "Chicken Tikka",
-      desc: "Marinated overnight and roasted in the tandoor. Juicy inside, lightly charred outside.",
-      type: "non-veg",
-      img: images.tikka,
-      price: 249,
-    },
-    {
-      name: "Paneer Tikka",
-      desc: "Cottage cheese marinated in spiced yoghurt, skewered and fired in the tandoor until golden.",
-      type: "veg",
-      img: images.panner_tikka,
-      price: 249,
-    },
-    {
-      name: "Butter Chicken Masala",
-      desc: "Slow-simmered chicken in a velvety tomato-butter sauce. Rich, mild, and endlessly satisfying.",
-      type: "non-veg",
-      img: images.butterchickenmasal,
-      price: 209,
-    },
-  ];
+  const menuItems = featuredMenu;
+  const extraItems = extraMenu;
 
-  const extraItems = [
-    {
-      name: "Chicken Dum Biryani",
-      desc: "The classic. Whole-spice dum with bone-in chicken and saffron-tinged basmati.",
-      type: "non-veg",
-      img: images.biriyani,
-      price: 199,
-    },
-    {
-      name: "Gunpowder Chicken",
-      desc: "Fiery dry-tossed chicken coated in a bold gunpowder spice blend. Not for the faint-hearted.",
-      type: "non-veg",
-      img: images.chickenKebab || images.biriyani,
-      price: 199,
-    },
-    {
-      name: "Honey Chilli Chicken",
-      desc: "Crispy chicken glazed in a sweet-heat honey chilli sauce — an Indo-Chinese crowd-pleaser.",
-      type: "non-veg",
-      img: images.dragonChicken || images.biriyani,
-      price: 239,
-    },
-    {
-      name: "Drums Of Heaven",
-      desc: "Crispy chicken winglets tossed in a fiery, sticky sauce. The table empties these fast.",
-      type: "non-veg",
-      img: images.chickenKebab || images.biriyani,
-      price: 269,
-    },
-    {
-      name: "Paneer Butter Masala",
-      desc: "Cottage cheese in a rich tomato-butter gravy — the vegetarian answer to butter chicken.",
-      type: "veg",
-      img: images.paneerTikka || images.biriyani,
-      price: 199,
-    },
-    {
-      name: "Kadai Paneer",
-      desc: "Paneer and peppers stir-fried in a rustic kadai masala with whole spices and fresh coriander.",
-      type: "veg",
-      img: images.paneerTikka || images.biriyani,
-      price: 189,
-    },
-    {
-      name: "Mushroom Tikka Masala",
-      desc: "Tandoor-kissed mushrooms folded into a spiced, creamy masala gravy.",
-      type: "veg",
-      img: images.mushroomBiryani || images.biriyani,
-      price: 169,
-    },
-    {
-      name: "Chicken Tikka Masala",
-      desc: "Tandoori chicken pieces finished in a bold, spiced masala — smoky and deeply flavoured.",
-      type: "non-veg",
-      img: images.chickenTikka || images.biriyani,
-      price: 229,
-    },
-    {
-      name: "Gobi Manchurian",
-      desc: "Crispy cauliflower florets tossed in a tangy Indo-Chinese sauce with ginger and spring onions.",
-      type: "veg",
-      img: images.vegManchurian || images.biriyani,
-      price: 119,
-    },
-    {
-      name: "Karvepaku Mushroom",
-      desc: "Curry-leaf tossed mushrooms with the same bold regional treatment as the chicken version.",
-      type: "veg",
-      img: images.mushroomBiryani || images.biriyani,
-      price: 169,
-    },
-    {
-      name: "Chicken Achari Tikka",
-      desc: "Pickle-spiced chicken skewers straight from the tandoor — tangy, smoky and sharp.",
-      type: "non-veg",
-      img: images.chickenTikka || images.biriyani,
-      price: 259,
-    },
-    {
-      name: "Chicken Malai Tikka",
-      desc: "Cream-marinated chicken tikka with a sweeter, gentler flavour. Melt-in-the-mouth texture.",
-      type: "non-veg",
-      img: images.chickenTikka || images.biriyani,
-      price: 269,
-    },
-  ];
+  // Listen for the "menu:jump" event fired by the hero/intro section so a
+  // category click there actually filters this grid, not just scrolls to it.
+  useEffect(() => {
+    const onJump = (e) => {
+      const category = e.detail?.category ?? null;
+      setActiveFilter(category);
+      if (category) setShowAll(true); // some categories only exist in extraItems
+    };
+    window.addEventListener("menu:jump", onJump);
+    return () => window.removeEventListener("menu:jump", onJump);
+  }, []);
 
-  const visibleItems = showAll ? [...menuItems, ...extraItems] : menuItems;
+  const allItems = showAll ? [...menuItems, ...extraItems] : menuItems;
+  const visibleItems = activeFilter
+    ? allItems.filter((item) => item.category === activeFilter)
+    : allItems;
 
   const handleExploreMenu = () => {
     setShowAll((prev) => !prev);
+  };
+
+  const handleFilterClick = (key) => {
+    setActiveFilter(key);
+    if (key) setShowAll(true);
+  };
+
+  // Clicking a dish: flash a quick highlight, then open the order screen
+  // where quantity, payment method and delivery location get chosen.
+  const handleItemClick = (item) => {
+    setJustClicked(item.name);
+    window.dispatchEvent(new CustomEvent("order:item", { detail: item }));
+    setTimeout(() => {
+      setJustClicked(null);
+      setOrderItem(item);
+    }, 200);
   };
 
   return (
@@ -154,13 +68,38 @@ const SignatureDishes = () => {
         </p>
       </div>
 
+      <div
+        className="signature-filters"
+        role="group"
+        aria-label="Filter menu by category"
+      >
+        {FILTERS.map((f) => (
+          <button
+            type="button"
+            key={f.label}
+            className={`signature-filter-chip ${
+              activeFilter === f.key ? "signature-filter-chip--active" : ""
+            }`}
+            onClick={() => handleFilterClick(f.key)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       <div className="app__signature-container">
         {visibleItems.map((item, index) => (
           <div
             className={`signature-card ${
               showAll && index >= menuItems.length ? "signature-card--new" : ""
-            }`}
-            key={index}
+            } ${justClicked === item.name ? "signature-card--clicked" : ""}`}
+            key={item.name}
+            role="button"
+            tabIndex={0}
+            onClick={() => handleItemClick(item)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") handleItemClick(item);
+            }}
           >
             <div className="signature-img-wrapper">
               <img
@@ -204,6 +143,10 @@ const SignatureDishes = () => {
           {showAll ? "SHOW LESS" : "EXPLORE MENU"}
         </button>
       </div>
+
+      {orderItem && (
+        <OrderScreen item={orderItem} onClose={() => setOrderItem(null)} />
+      )}
     </div>
   );
 };

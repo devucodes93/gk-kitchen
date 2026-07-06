@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { GiHamburgerMenu } from "react-icons/gi";
 import { MdOutlineRestaurantMenu } from "react-icons/md";
@@ -22,6 +23,30 @@ const Navbar = () => {
   const [activeLink, setActiveLink] = useState("#home");
   const [isLoginOpen, setIsLoginOpen] = useState(false); // Integrated from second snippet
   const [user, setUser] = useState(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const isHomePage = location.pathname === "/";
+
+  const handleNavClick = (link, event) => {
+    event.preventDefault();
+    setActiveLink(link.href);
+    setToggleMenu(false);
+
+    if (isHomePage) {
+      const targetId = link.href.replace("#", "");
+      const target = document.getElementById(targetId);
+
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.history.replaceState(null, "", link.href);
+      }
+
+      return;
+    }
+
+    navigate(`/${link.href}`);
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -104,7 +129,10 @@ const Navbar = () => {
               key={link.href}
               className={activeLink === link.href ? "active" : ""}
             >
-              <a href={link.href} onClick={() => setActiveLink(link.href)}>
+              <a
+                href={link.href}
+                onClick={(event) => handleNavClick(link, event)}
+              >
                 {link.label}
                 <span className="nav-underline" />
               </a>
@@ -210,10 +238,7 @@ const Navbar = () => {
                   >
                     <a
                       href={link.href}
-                      onClick={() => {
-                        setActiveLink(link.href);
-                        setToggleMenu(false);
-                      }}
+                      onClick={(event) => handleNavClick(link, event)}
                     >
                       {link.label}
                     </a>
