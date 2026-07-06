@@ -20,6 +20,58 @@ const readCart = (stateCart) => {
   }
 };
 
+// Transform backend API response to frontend format
+const transformMenuItem = (backendItem) => {
+  // Map category names to our format
+  const categoryMap = {
+    "Main Course": "curries",
+    Biryani: "biryani",
+    Tandoori: "tandoori",
+    "Tandoori & Tikka": "tandoori",
+    Starters: "indo-chinese",
+    "Indo-Chinese": "indo-chinese",
+  };
+
+  // Map type to lowercase
+  const typeMap = {
+    Veg: "veg",
+    NonVeg: "nonveg",
+    veg: "veg",
+    nonveg: "nonveg",
+  };
+
+  const mappedCategory =
+    categoryMap[backendItem.category] ||
+    backendItem.category?.toLowerCase() ||
+    "curries";
+  const mappedType = typeMap[backendItem.menu_type] || "veg";
+
+  // Normalize availability: backend may send `is_available`, `is_availble` (typo), or `available`.
+  const available = (() => {
+    if (Object.prototype.hasOwnProperty.call(backendItem, "is_available")) {
+      return backendItem.is_available !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(backendItem, "is_availble")) {
+      return backendItem.is_availble !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(backendItem, "available")) {
+      return backendItem.available !== false;
+    }
+    return true;
+  })();
+
+  return {
+    id: backendItem.menu_id,
+    name: backendItem.menu_name,
+    price: Number.isFinite(Number(backendItem.price)) ? parseFloat(backendItem.price) : 0,
+    category: mappedCategory,
+    type: mappedType,
+    img: backendItem.image_url || backendItem.image || "",
+    available,
+    desc: backendItem.description || backendItem.menu_name || "",
+  };
+};
+
 const MenuPage = () => {
   const location = useLocation();
   const [cart, setCart] = useState(() => readCart(location.state?.cart));
@@ -44,12 +96,7 @@ const MenuPage = () => {
 
         if (!isMounted) return;
 
-        setMenuItems(
-          payload.map((menuItem) => ({
-            ...menuItem,
-            available: menuItem.available !== false,
-          })),
-        );
+        setMenuItems(payload.map(transformMenuItem));
       } catch (error) {
         if (!isMounted) return;
         setMenuError("Unable to load live menu. Please try again later.");

@@ -1,6 +1,8 @@
 export const DELIVERY_FEE = 30;
 export const TAX_RATE = 0.05;
-export const DEFAULT_CENTER = [17.385, 78.4867];
+export const RESTAURANT_LOCATION = [13.1354634, 77.5683839];
+export const DEFAULT_CENTER = [13.1354634, 77.5683839];
+export const DEMO_DELIVERY_LOCATION = [13.1372, 77.5667];
 
 export const ORDER_PREFERENCES = [
   "Less spicy",

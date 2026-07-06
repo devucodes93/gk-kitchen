@@ -13,6 +13,7 @@ import MenuPage from "./Pages/MenuPage";
 import WhatsAppButton from "./components/Whatsapp/WhatsAppButton";
 
 import "./App.css";
+import TrackingMap from "./components/TrackingOrder/TrackingMap";
 
 function HomePage() {
   return (
@@ -25,6 +26,7 @@ function HomePage() {
       <Intro />
       <Gallery />
       <FindUs />
+      <TrackingMap/>
       <Footer />
     </>
   );

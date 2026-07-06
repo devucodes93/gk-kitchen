@@ -1,15 +1,36 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import LocationMap from "../../components/LocationMap/LocationMap";
 import {
   DELIVERY_FEE,
   TAX_RATE,
   DEFAULT_CENTER,
+  RESTAURANT_LOCATION,
   ORDER_PREFERENCES,
 } from "../../constants/restaurant";
 import "./OrderScreen.css";
 
 // TODO: replace with your real backend path
 const ORDER_API_ENDPOINT = "/api/orders/place";
+
+// Get address name from coordinates using Nominatim API
+async function getAddressFromCoords(lat, lng) {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+    );
+    const data = await response.json();
+    return (
+      data.address?.road ||
+      data.address?.suburb ||
+      data.address?.city ||
+      `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+    );
+  } catch (error) {
+    console.warn("Address lookup failed:", error);
+    return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  }
+}
 
 const Spinner = () => (
   <svg className="order-spinner" viewBox="0 0 24 24" aria-hidden="true">
@@ -25,24 +46,19 @@ const OrderScreen = ({
   menuItems = [],
 }) => {
   const navigate = useNavigate();
-  const [mounted, setMounted] = useState(false); // drives the slide-up animation
-  const [initializing, setInitializing] = useState(true); // skeleton while the sheet "loads"
-  const [mapReady, setMapReady] = useState(false);
-  const [screen, setScreen] = useState(initialScreen); // item | menu | checkout
+  const [mounted, setMounted] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+  const [screen, setScreen] = useState(initialScreen);
 
   const [quantity, setQuantity] = useState(1);
   const [cart, setCart] = useState(initialCart);
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [preferences, setPreferences] = useState([]);
   const [instructions, setInstructions] = useState("");
-  const [location, setLocation] = useState(null); // { lat, lng, address }
+  const [location, setLocation] = useState(null);
   const [locating, setLocating] = useState(false);
-  const [status, setStatus] = useState("idle"); // idle | submitting | success | error
+  const [status, setStatus] = useState("idle");
   const [orderId, setOrderId] = useState(null);
-
-  const mapContainerRef = useRef(null);
-  const mapRef = useRef(null);
-  const markerRef = useRef(null);
 
   const activeCart = cart.length ? cart : [{ ...item, quantity }];
   const cartCount = useMemo(
@@ -177,91 +193,23 @@ const OrderScreen = ({
     };
   }, []);
 
-  const updateLocation = async (lat, lng) => {
-    setLocation({ lat, lng, address: null });
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-      );
-      const data = await res.json();
-      setLocation({
-        lat,
-        lng,
-        address: data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-      });
-    } catch {
-      setLocation({
-        lat,
-        lng,
-        address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-      });
-    }
-  };
-
-  useEffect(() => {
-    let map;
-
-    const loadLeaflet = () =>
-      new Promise((resolve) => {
-        if (window.L) return resolve(window.L);
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(link);
-        const script = document.createElement("script");
-        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-        script.onload = () => resolve(window.L);
-        document.body.appendChild(script);
-      });
-
-    loadLeaflet().then((L) => {
-      if (!mapContainerRef.current || mapRef.current) return;
-
-      map = L.map(mapContainerRef.current, { zoomControl: false }).setView(
-        DEFAULT_CENTER,
-        13,
-      );
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap contributors",
-        maxZoom: 19,
-      }).addTo(map);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
-
-      const marker = L.marker(DEFAULT_CENTER, { draggable: true }).addTo(map);
-      marker.on("dragend", () => {
-        const { lat, lng } = marker.getLatLng();
-        updateLocation(lat, lng);
-      });
-      map.on("click", (e) => {
-        marker.setLatLng(e.latlng);
-        updateLocation(e.latlng.lat, e.latlng.lng);
-      });
-
-      mapRef.current = map;
-      markerRef.current = marker;
-      map.whenReady(() => setMapReady(true));
+  const updateLocation = (locationData) => {
+    const { lat, lng, address } = locationData;
+    setLocation({
+      lat,
+      lng,
+      address: address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
     });
-
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  };
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) return;
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const { latitude, longitude } = pos.coords;
-        if (mapRef.current && markerRef.current) {
-          mapRef.current.setView([latitude, longitude], 15);
-          markerRef.current.setLatLng([latitude, longitude]);
-        }
-        updateLocation(latitude, longitude);
+        const address = await getAddressFromCoords(latitude, longitude);
+        updateLocation({ lat: latitude, lng: longitude, address });
         setLocating(false);
       },
       () => setLocating(false),
@@ -559,19 +507,15 @@ const OrderScreen = ({
             Select location on map
           </span>
           <span className="order-location-toolbar-hint">
-            Drag the pin or tap the map to place your drop point.
+            Tap the map to place your drop point.
           </span>
         </div>
 
-        <div className="order-map-wrapper">
-          {!mapReady && <div className="skeleton order-map-skeleton" />}
-          <div
-            className="order-map"
-            style={{ opacity: mapReady ? 1 : 0 }}
-            ref={mapContainerRef}
-          />
-        </div>
-        <p className="order-map-hint">Tap or drag the pin to fine-tune</p>
+        <LocationMap
+          onLocationSelect={updateLocation}
+          restaurantLocation={RESTAURANT_LOCATION}
+        />
+        <p className="order-map-hint">Tap to select your delivery location</p>
       </div>
 
       <div className="order-divider" />

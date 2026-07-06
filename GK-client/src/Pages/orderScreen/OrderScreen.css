@@ -1033,6 +1033,18 @@
   }
 }
 
+/* Center modal on larger screens, bottom-sheet on mobile */
+@media (min-width: 768px) {
+  .order-overlay {
+    align-items: center;
+  }
+
+  .order-sheet {
+    border-radius: 24px;
+    max-height: 90vh;
+  }
+}
+
 @media (max-width: 480px) {
   .order-sheet {
     max-width: 100%;
