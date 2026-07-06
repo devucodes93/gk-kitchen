@@ -12,11 +12,14 @@ const userRoutes = require("./src/routes/authRoutes.js");
 const passport = require("./src/config/passport");
 const SignupRoute = require("./src/routes/signupRoutes");
 const orderRoutes = require("./src/routes/orderRoutes.js")
+const menueRoutes = require("./src/routes/menuRoutes.js")
 
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+// app.use(express.json());
+app.use(express.json({ limit: "20mb" }));
+
 
 // ─── PostgreSQL ───────────────────────────────────────────────────────────────
 (async () => {
@@ -42,6 +45,8 @@ app.use(passport.initialize());
 app.use("/api/auth", SignupRoute);   // POST /api/auth/register, POST /api/auth/login
 app.use("/api/auth", userRoutes);       // GET  /api/auth/google, GET /api/auth/google/callback
 app.use("/api/orders", orderRoutes);
+
+app.use("/api/menu", menueRoutes);
 
 // List endpoints AFTER routes are registered
 console.log("Registered endpoints:", listEndpoints(app));
