@@ -11,6 +11,7 @@ const pool = require("./src/config/db.js");
 const userRoutes = require("./src/routes/authRoutes.js");
 const passport = require("./src/config/passport");
 const SignupRoute = require("./src/routes/signupRoutes");
+const orderRoutes = require("./src/routes/orderRoutes.js")
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.use(passport.initialize());
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/api/auth", SignupRoute);   // POST /api/auth/register, POST /api/auth/login
 app.use("/api/auth", userRoutes);       // GET  /api/auth/google, GET /api/auth/google/callback
+app.use("/api/orders", orderRoutes);
 
 // List endpoints AFTER routes are registered
 console.log("Registered endpoints:", listEndpoints(app));

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { FaShoppingCart } from "react-icons/fa";
 
+import API from "../api/api";
 import { Navbar } from "../components";
-import { allMenuItems } from "../constants/menu";
+import OrderScreen from "./orderScreen/OrderScreen";
 import { CATEGORY_LABELS, MENU_CATEGORIES } from "../constants/restaurant";
 
 import "./MenuPage.css";
@@ -20,13 +21,51 @@ const readCart = (stateCart) => {
 };
 
 const MenuPage = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   const [cart, setCart] = useState(() => readCart(location.state?.cart));
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [menuItems, setMenuItems] = useState([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState(null);
 
   useEffect(() => {
     localStorage.setItem("gk-cart", JSON.stringify(cart));
   }, [cart]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchMenu = async () => {
+      try {
+        const response = await API.get("/menu");
+        const payload = Array.isArray(response.data)
+          ? response.data
+          : response.data?.items || [];
+
+        if (!isMounted) return;
+
+        setMenuItems(
+          payload.map((menuItem) => ({
+            ...menuItem,
+            available: menuItem.available !== false,
+          })),
+        );
+      } catch (error) {
+        if (!isMounted) return;
+        setMenuError("Unable to load live menu. Please try again later.");
+        setMenuItems([]);
+      } finally {
+        if (!isMounted) return;
+        setMenuLoading(false);
+      }
+    };
+
+    fetchMenu();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
@@ -42,11 +81,9 @@ const MenuPage = () => {
       MENU_CATEGORIES.map((category) => ({
         category,
         label: CATEGORY_LABELS[category] || category,
-        items: allMenuItems.filter(
-          (menuItem) => menuItem.category === category,
-        ),
+        items: menuItems.filter((menuItem) => menuItem.category === category),
       })).filter((group) => group.items.length),
-    [],
+    [menuItems],
   );
 
   const addItem = (menuItem) => {
@@ -78,8 +115,10 @@ const MenuPage = () => {
 
   const handleCheckout = () => {
     if (!cart.length) return;
-    navigate("/checkout", { state: { cart } });
+    setCheckoutOpen(true);
   };
+
+  const closeCheckout = () => setCheckoutOpen(false);
 
   return (
     <div className="menu-page">
@@ -94,6 +133,22 @@ const MenuPage = () => {
         </section>
 
         <section className="menu-page-layout">
+          <div className="menu-page-page-metadata">
+            {menuLoading && (
+              <div className="menu-page-status">Loading menu…</div>
+            )}
+            {!menuLoading && menuError && (
+              <div className="menu-page-status menu-page-status--error">
+                {menuError}
+              </div>
+            )}
+            {!menuLoading && !menuItems.length && (
+              <div className="menu-page-status menu-page-status--empty">
+                No items available right now. Please check back soon.
+              </div>
+            )}
+          </div>
+
           <div className="menu-page-sections">
             {groupedMenu.map((group) => (
               <section
@@ -118,14 +173,27 @@ const MenuPage = () => {
                       const quantity =
                         cart.find((item) => item.name === menuItem.name)
                           ?.quantity || 0;
+                      const unavailable = menuItem.available === false;
 
                       return (
-                        <article className="menu-page-card" key={menuItem.name}>
+                        <article
+                          className={`menu-page-card ${
+                            unavailable ? "menu-page-card--unavailable" : ""
+                          }`}
+                          key={menuItem.name}
+                        >
                           <img
                             className="menu-page-card-img"
                             src={menuItem.img}
                             alt={menuItem.name}
                           />
+                          {unavailable && (
+                            <div className="menu-page-card-overlay">
+                              <span className="menu-page-card-overlay-text">
+                                Not available
+                              </span>
+                            </div>
+                          )}
                           <div className="menu-page-card-content">
                             <div className="menu-page-card-top">
                               <span
@@ -160,6 +228,7 @@ const MenuPage = () => {
                                     type="button"
                                     className="menu-page-qty-btn"
                                     onClick={() => addItem(menuItem)}
+                                    disabled={unavailable}
                                   >
                                     +
                                   </button>
@@ -169,8 +238,9 @@ const MenuPage = () => {
                                   type="button"
                                   className="menu-page-add-btn"
                                   onClick={() => addItem(menuItem)}
+                                  disabled={unavailable}
                                 >
-                                  Add to cart
+                                  {unavailable ? "Unavailable" : "Add to cart"}
                                 </button>
                               )}
                             </div>
@@ -203,6 +273,16 @@ const MenuPage = () => {
           <span className="menu-page-cart-fab-total">₹{subtotal}</span>
         </button>
       </main>
+
+      {checkoutOpen && (
+        <OrderScreen
+          item={cart[0]}
+          initialCart={cart}
+          initialScreen="checkout"
+          onClose={closeCheckout}
+          menuItems={menuItems}
+        />
+      )}
     </div>
   );
 };

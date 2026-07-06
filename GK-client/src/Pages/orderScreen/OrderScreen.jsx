@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { allMenuItems } from "../../constants/menu";
 import {
   DELIVERY_FEE,
   TAX_RATE,
@@ -23,6 +22,7 @@ const OrderScreen = ({
   onClose,
   initialCart = [],
   initialScreen = "item",
+  menuItems = [],
 }) => {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false); // drives the slide-up animation
@@ -61,6 +61,7 @@ const OrderScreen = ({
   const tax = useMemo(() => Math.round(subtotal * TAX_RATE), [subtotal]);
   const total = subtotal + DELIVERY_FEE + tax;
   const selectedPreview = activeCart[0] || item;
+  const availableMenuItems = menuItems;
 
   // Slide the sheet up on mount instead of popping in.
   useEffect(() => {
@@ -77,6 +78,12 @@ const OrderScreen = ({
     setTimeout(onClose, 250); // let the slide-down finish first
   };
 
+  useEffect(() => {
+    if (cart.length === 0 && screen !== "item") {
+      handleRequestClose();
+    }
+  }, [cart.length, screen]);
+
   const seedCartFromCurrentItem = () => {
     setCart([{ ...item, quantity }]);
   };
@@ -85,7 +92,12 @@ const OrderScreen = ({
     const nextCart = cart.length ? cart : [{ ...item, quantity }];
     setCart(nextCart);
     localStorage.setItem("gk-cart", JSON.stringify(nextCart));
-    navigate("/menu", { state: { cart: nextCart } });
+
+    if (window.location.pathname !== "/menu") {
+      navigate("/menu", { state: { cart: nextCart } });
+    }
+
+    onClose();
   };
 
   const handleCheckoutFromSelection = () => {
@@ -381,19 +393,30 @@ const OrderScreen = ({
       </div>
 
       <div className="order-menu-grid">
-        {allMenuItems.map((menuItem) => {
+        {availableMenuItems.map((menuItem) => {
           const cartEntry = cart.find(
             (cartItem) => cartItem.name === menuItem.name,
           );
           const quantityInCart = cartEntry?.quantity || 0;
+          const unavailable = menuItem.available === false;
 
           return (
-            <div className="order-menu-card" key={menuItem.name}>
+            <div
+              className={`order-menu-card ${
+                unavailable ? "order-menu-card--unavailable" : ""
+              }`}
+              key={menuItem.name}
+            >
               <img
                 src={menuItem.img}
                 alt={menuItem.name}
                 className="order-menu-thumb"
               />
+              {unavailable && (
+                <div className="order-menu-overlay">
+                  <span className="order-menu-overlay-text">Not available</span>
+                </div>
+              )}
               <div className="order-menu-card-content">
                 <div className="order-menu-card-top">
                   <span className={`order-menu-badge ${menuItem.type}`}>
@@ -418,6 +441,7 @@ const OrderScreen = ({
                         type="button"
                         className="order-qty-pill"
                         onClick={() => handleAddToCart(menuItem)}
+                        disabled={unavailable}
                       >
                         +
                       </button>
@@ -427,8 +451,9 @@ const OrderScreen = ({
                       type="button"
                       className="order-add-btn"
                       onClick={() => handleAddToCart(menuItem)}
+                      disabled={unavailable}
                     >
-                      Add to cart
+                      {unavailable ? "Unavailable" : "Add to cart"}
                     </button>
                   )}
                 </div>

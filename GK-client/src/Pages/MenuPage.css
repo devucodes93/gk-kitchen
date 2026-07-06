@@ -113,6 +113,27 @@
   overflow: hidden;
 }
 
+.menu-page-status {
+  padding: 1rem 1.25rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(238, 226, 209, 0.9);
+  margin-bottom: 1rem;
+  color: #5d533f;
+  font-weight: 600;
+}
+
+.menu-page-status--error {
+  background: rgba(255, 226, 226, 0.9);
+  border-color: rgba(235, 148, 150, 0.8);
+  color: #924e4f;
+}
+
+.menu-page-status--empty {
+  background: rgba(248, 241, 231, 0.95);
+  border-color: rgba(228, 214, 185, 0.9);
+}
+
 .menu-page-category::before {
   content: "";
   position: absolute;
@@ -195,6 +216,12 @@
 .menu-page-card {
   border-radius: 24px;
   padding: 0.85rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.menu-page-card--unavailable {
+  opacity: 0.78;
 }
 
 .menu-page-card-img {
@@ -203,6 +230,34 @@
   object-fit: cover;
   border-radius: 18px;
   margin-bottom: 0.8rem;
+  transition:
+    filter 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.menu-page-card--unavailable .menu-page-card-img {
+  filter: grayscale(100%);
+  opacity: 0.75;
+}
+
+.menu-page-card-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.menu-page-card-overlay-text {
+  background: rgba(255, 255, 255, 0.92);
+  color: #2d2b26;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .menu-page-card-content {
@@ -276,6 +331,14 @@
   transition:
     transform 0.2s ease,
     background 0.2s ease;
+}
+
+.menu-page-add-btn:disabled,
+.menu-page-qty-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #f3ede4;
+  color: #a89786;
 }
 
 .menu-page-add-btn {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import { Chef, FindUs, Footer, Gallery, Header, Intro } from "./container";
 
@@ -10,7 +10,6 @@ import SignatureDishes from "./container/SignatureDishes/SignatureDishes";
 
 import AuthSuccess from "./Pages/AuthSuccess";
 import MenuPage from "./Pages/MenuPage";
-import CheckoutPage from "./Pages/CheckoutPage";
 import WhatsAppButton from "./components/Whatsapp/WhatsAppButton";
 
 import "./App.css";
@@ -53,12 +52,10 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/menu" element={<MenuPage />} />
-        <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/checkout" element={<Navigate to="/menu" replace />} />
         <Route path="/auth-success" element={<AuthSuccess />} />
       </Routes>
-      {!checkoutOpen &&
-        location.pathname !== "/menu" &&
-        location.pathname !== "/checkout" && <WhatsAppButton />}
+      {!checkoutOpen && location.pathname !== "/menu" && <WhatsAppButton />}
     </>
   );
 }
