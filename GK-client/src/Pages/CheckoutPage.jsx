@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { allMenuItems } from "../constants/menu";
+import { readCartFromStorage } from "../utils/cartStorage";
 import OrderScreen from "./orderScreen/OrderScreen";
 
 const CheckoutPage = () => {
@@ -10,9 +11,7 @@ const CheckoutPage = () => {
 
   let cart = [];
   try {
-    cart =
-      location.state?.cart ||
-      JSON.parse(localStorage.getItem("gk-cart") || "[]");
+    cart = readCartFromStorage(location.state?.cart);
   } catch {
     cart = [];
   }

@@ -8,10 +8,40 @@ import {
   RESTAURANT_LOCATION,
   ORDER_PREFERENCES,
 } from "../../constants/restaurant";
+import {
+  readCartFromStorage,
+  writeCartToStorage,
+} from "../../utils/cartStorage";
 import "./OrderScreen.css";
 
 // TODO: replace with your real backend path
 const ORDER_API_ENDPOINT = "/api/orders/place";
+const ADDON_OPTIONS = [
+  {
+    id: "raita",
+    name: "Raita",
+    price: 40,
+    desc: "Cool yoghurt side with cucumber and spices.",
+  },
+  {
+    id: "salad",
+    name: "Fresh Salad",
+    price: 60,
+    desc: "Crunchy salad with lemon and herbs.",
+  },
+  {
+    id: "papad",
+    name: "Papad",
+    price: 25,
+    desc: "Crisp roasted papad served hot.",
+  },
+  {
+    id: "soup",
+    name: "Tomato Soup",
+    price: 70,
+    desc: "Warm comforting tomato soup.",
+  },
+];
 
 // Get address name from coordinates using Nominatim API
 async function getAddressFromCoords(lat, lng) {
@@ -49,9 +79,10 @@ const OrderScreen = ({
   const [mounted, setMounted] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [screen, setScreen] = useState(initialScreen);
+  const [checkoutStep, setCheckoutStep] = useState("review"); // "review" or "delivery"
 
   const [quantity, setQuantity] = useState(1);
-  const [cart, setCart] = useState(initialCart);
+  const [cart, setCart] = useState(() => readCartFromStorage(initialCart));
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [preferences, setPreferences] = useState([]);
   const [instructions, setInstructions] = useState("");
@@ -59,6 +90,8 @@ const OrderScreen = ({
   const [locating, setLocating] = useState(false);
   const [status, setStatus] = useState("idle");
   const [orderId, setOrderId] = useState(null);
+  const [showAddonsModal, setShowAddonsModal] = useState(false);
+  const [addonSelections, setAddonSelections] = useState([]);
 
   const activeCart = cart.length ? cart : [{ ...item, quantity }];
   const cartCount = useMemo(
@@ -74,8 +107,16 @@ const OrderScreen = ({
       ),
     [activeCart],
   );
-  const tax = useMemo(() => Math.round(subtotal * TAX_RATE), [subtotal]);
-  const total = subtotal + DELIVERY_FEE + tax;
+  const addonsSubtotal = useMemo(
+    () => addonSelections.reduce((sum, addon) => sum + addon.price, 0),
+    [addonSelections],
+  );
+  const subtotalWithAddons = subtotal + addonsSubtotal;
+  const tax = useMemo(
+    () => Math.round(subtotalWithAddons * TAX_RATE),
+    [subtotalWithAddons],
+  );
+  const total = subtotalWithAddons + DELIVERY_FEE + tax;
   const selectedPreview = activeCart[0] || item;
   const availableMenuItems = menuItems;
 
@@ -104,10 +145,13 @@ const OrderScreen = ({
     setCart([{ ...item, quantity }]);
   };
 
+  useEffect(() => {
+    writeCartToStorage(cart);
+  }, [cart]);
+
   const handleSelectMore = () => {
     const nextCart = cart.length ? cart : [{ ...item, quantity }];
     setCart(nextCart);
-    localStorage.setItem("gk-cart", JSON.stringify(nextCart));
 
     if (window.location.pathname !== "/menu") {
       navigate("/menu", { state: { cart: nextCart } });
@@ -118,6 +162,7 @@ const OrderScreen = ({
 
   const handleCheckoutFromSelection = () => {
     if (!cart.length) seedCartFromCurrentItem();
+    setCheckoutStep("review");
     setScreen("checkout");
   };
 
@@ -149,6 +194,20 @@ const OrderScreen = ({
         )
         .filter((cartItem) => cartItem.quantity > 0),
     );
+  };
+
+  const toggleAddon = (addon) => {
+    setAddonSelections((currentSelections) => {
+      const alreadyAdded = currentSelections.some(
+        (selection) => selection.id === addon.id,
+      );
+      if (alreadyAdded) {
+        return currentSelections.filter(
+          (selection) => selection.id !== addon.id,
+        );
+      }
+      return [...currentSelections, addon];
+    });
   };
 
   const updateCartItemQuantity = (menuItem, delta) => {
@@ -194,11 +253,20 @@ const OrderScreen = ({
   }, []);
 
   const updateLocation = (locationData) => {
-    const { lat, lng, address } = locationData;
+    const { lat, lng, address } = locationData || {};
+    const safeLat = Number.isFinite(Number(lat))
+      ? Number(lat)
+      : DEFAULT_CENTER[0];
+    const safeLng = Number.isFinite(Number(lng))
+      ? Number(lng)
+      : DEFAULT_CENTER[1];
+    const safeAddress =
+      address || `${safeLat.toFixed(4)}, ${safeLng.toFixed(4)}`;
+
     setLocation({
-      lat,
-      lng,
-      address: address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+      lat: safeLat,
+      lng: safeLng,
+      address: safeAddress,
     });
   };
 
@@ -215,6 +283,14 @@ const OrderScreen = ({
       () => setLocating(false),
       { enableHighAccuracy: true, timeout: 8000 },
     );
+  };
+
+  const handleContinueToDelivery = () => {
+    setCheckoutStep("delivery");
+  };
+
+  const handleBackToReview = () => {
+    setCheckoutStep("review");
   };
 
   const handlePlaceOrder = async () => {
@@ -235,10 +311,12 @@ const OrderScreen = ({
       pricing: {
         unitPrice: activeCart[0]?.price || item.price,
         subtotal,
+        addonsSubtotal,
         deliveryFee: DELIVERY_FEE,
         tax,
         total,
       },
+      addons: addonSelections,
       paymentMethod,
       preferences,
       instructions: instructions.trim(),
@@ -413,7 +491,8 @@ const OrderScreen = ({
     </>
   );
 
-  const renderCheckoutStage = () => (
+  // STEP 1 of checkout: what they picked, price breakdown, and add-ons.
+  const renderCheckoutReviewStage = () => (
     <>
       <div className="order-block">
         <p className="order-block-label">Your cart</p>
@@ -458,21 +537,122 @@ const OrderScreen = ({
 
       <div className="order-divider" />
 
-      <div className="order-block order-summary-strip">
-        <div>
-          <p className="order-block-label">Amount to pay</p>
-          <h3 className="order-summary-total">₹{total}</h3>
+      <div className="order-block">
+        <div className="order-addon-header">
+          <div>
+            <p className="order-block-label">Optional add-ons</p>
+            <p className="order-addon-hint">
+              Add sides or extras to make your meal complete.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="order-secondary-btn"
+            onClick={() => setShowAddonsModal(true)}
+          >
+            Add add-ons
+          </button>
         </div>
-        <div className="order-summary-meta">
-          <span>
-            {cartCount} item{cartCount === 1 ? "" : "s"}
-          </span>
-          <span>Delivery + tax included</span>
-        </div>
+
+        {addonSelections.length > 0 ? (
+          <div className="order-addon-list">
+            {addonSelections.map((addon) => (
+              <span key={addon.id} className="order-addon-pill">
+                {addon.name} · ₹{addon.price}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="order-addon-empty">No add-ons selected yet.</p>
+        )}
       </div>
+
+      {showAddonsModal && (
+        <div
+          className="order-addon-modal-backdrop"
+          onClick={() => setShowAddonsModal(false)}
+        >
+          <div
+            className="order-addon-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="order-addon-modal-header">
+              <div>
+                <p className="order-block-label">Choose add-ons</p>
+                <h3 className="order-addon-modal-title">Optional sides</h3>
+              </div>
+              <button
+                type="button"
+                className="order-close-btn"
+                onClick={() => setShowAddonsModal(false)}
+                aria-label="Close add-ons"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="order-addon-modal-list">
+              {ADDON_OPTIONS.map((addon) => {
+                const selected = addonSelections.some(
+                  (selection) => selection.id === addon.id,
+                );
+                return (
+                  <div className="order-addon-option" key={addon.id}>
+                    <div className="order-addon-option-copy">
+                      <strong>{addon.name}</strong>
+                      <p>{addon.desc}</p>
+                    </div>
+                    <div className="order-addon-option-actions">
+                      <span>₹{addon.price}</span>
+                      <button
+                        type="button"
+                        className={`order-addon-option-btn ${selected ? "order-addon-option-btn--active" : ""}`}
+                        onClick={() => toggleAddon(addon)}
+                      >
+                        {selected ? "Added" : "Add"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="order-divider" />
 
+      <div className="order-block">
+        <p className="order-block-label">Bill details</p>
+        <div className="order-price-row">
+          <span>Item total × {cartCount}</span>
+          <span>₹{subtotal}</span>
+        </div>
+        {addonsSubtotal > 0 && (
+          <div className="order-price-row">
+            <span>Add-ons</span>
+            <span>₹{addonsSubtotal}</span>
+          </div>
+        )}
+        <div className="order-price-row">
+          <span>Delivery fee</span>
+          <span>₹{DELIVERY_FEE}</span>
+        </div>
+        <div className="order-price-row">
+          <span>Taxes</span>
+          <span>₹{tax}</span>
+        </div>
+        <div className="order-price-row order-price-row--total">
+          <span>To pay</span>
+          <span>₹{total}</span>
+        </div>
+      </div>
+    </>
+  );
+
+  // STEP 2 of checkout: delivery location, instructions, preferences, payment.
+  const renderCheckoutDeliveryStage = () => (
+    <>
       <div className="order-block">
         <p className="order-block-label">Deliver to</p>
         <div className="order-location-card">
@@ -636,13 +816,21 @@ const OrderScreen = ({
             <div className="order-sheet-header">
               <div>
                 <p className=" order-eyebrow order-header-title">
-                  {screen === "menu" ? "ALL MENU" : "CHECKOUT"}
+                  {screen === "menu"
+                    ? "ALL MENU"
+                    : screen === "checkout"
+                      ? checkoutStep === "review"
+                        ? "STEP 1 OF 2"
+                        : "STEP 2 OF 2"
+                      : "SELECT ITEM"}
                 </p>
                 <h2 className="order-header-title">
                   {screen === "menu"
                     ? "Build your cart"
                     : screen === "checkout"
-                      ? "Review and confirm"
+                      ? checkoutStep === "review"
+                        ? "Review your order"
+                        : "Delivery details"
                       : "Choose your dish"}
                 </h2>
               </div>
@@ -664,7 +852,9 @@ const OrderScreen = ({
                   {screen === "menu"
                     ? renderMenuStage()
                     : screen === "checkout"
-                      ? renderCheckoutStage()
+                      ? checkoutStep === "review"
+                        ? renderCheckoutReviewStage()
+                        : renderCheckoutDeliveryStage()
                       : renderItemStage()}
                 </>
               )}
@@ -710,12 +900,41 @@ const OrderScreen = ({
                       Checkout cart
                     </button>
                   </>
+                ) : checkoutStep === "review" ? (
+                  <>
+                    <div className="order-footer-total">
+                      <span className="order-footer-total-label">Total</span>
+                      <span className="order-footer-total-value">₹{total}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="order-secondary-cta"
+                      onClick={handleSelectMore}
+                    >
+                      Add more items
+                    </button>
+                    <button
+                      type="button"
+                      className="order-cta"
+                      onClick={handleContinueToDelivery}
+                      disabled={cartCount === 0}
+                    >
+                      Continue
+                    </button>
+                  </>
                 ) : (
                   <>
                     <div className="order-footer-total">
                       <span className="order-footer-total-label">Total</span>
                       <span className="order-footer-total-value">₹{total}</span>
                     </div>
+                    <button
+                      type="button"
+                      className="order-secondary-cta"
+                      onClick={handleBackToReview}
+                    >
+                      Back
+                    </button>
                     <button
                       type="button"
                       className="order-cta"

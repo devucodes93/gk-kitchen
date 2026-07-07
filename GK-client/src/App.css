@@ -1,7 +1,54 @@
 .section__padding {
   padding: 4rem 6rem;
 }
+.location-map-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
 
+.location-map-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.location-map-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  color: #666;
+}
+
+.location-map-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(23, 19, 16, 0.85);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.location-map-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2563ff;
+}
 .flex__center {
   display: flex;
   justify-content: center;

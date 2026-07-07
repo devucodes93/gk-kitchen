@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { featuredMenu } from "../../constants/menu";
 import "./SignatureDishes.css";
-import { featuredMenu, extraMenu } from "../../constants/menu";
-import OrderScreen from "../../Pages/orderScreen/OrderScreen";
 
 const FILTERS = [
   { key: null, label: "All" },
@@ -12,49 +12,23 @@ const FILTERS = [
 ];
 
 const SignatureDishes = () => {
-  const [showAll, setShowAll] = useState(false);
-  const [activeFilter, setActiveFilter] = useState(null);
   const [justClicked, setJustClicked] = useState(null);
-  const [orderItem, setOrderItem] = useState(null);
-
-  const menuItems = featuredMenu;
-  const extraItems = extraMenu;
-
-  // Listen for the "menu:jump" event fired by the hero/intro section so a
-  // category click there actually filters this grid, not just scrolls to it.
-  useEffect(() => {
-    const onJump = (e) => {
-      const category = e.detail?.category ?? null;
-      setActiveFilter(category);
-      if (category) setShowAll(true); // some categories only exist in extraItems
-    };
-    window.addEventListener("menu:jump", onJump);
-    return () => window.removeEventListener("menu:jump", onJump);
-  }, []);
-
-  const allItems = showAll ? [...menuItems, ...extraItems] : menuItems;
-  const visibleItems = activeFilter
-    ? allItems.filter((item) => item.category === activeFilter)
-    : allItems;
+  const navigate = useNavigate();
+  const topItems = featuredMenu.slice(0, 6);
 
   const handleExploreMenu = () => {
-    setShowAll((prev) => !prev);
+    navigate("/menu");
   };
 
   const handleFilterClick = (key) => {
-    setActiveFilter(key);
-    if (key) setShowAll(true);
+    const query = key ? `?category=${encodeURIComponent(key)}` : "";
+    navigate(`/menu${query}`);
   };
 
-  // Clicking a dish: flash a quick highlight, then open the order screen
-  // where quantity, payment method and delivery location get chosen.
   const handleItemClick = (item) => {
     setJustClicked(item.name);
-    window.dispatchEvent(new CustomEvent("order:item", { detail: item }));
-    setTimeout(() => {
-      setJustClicked(null);
-      setOrderItem(item);
-    }, 200);
+   
+    setTimeout(() => setJustClicked(null), 200);
   };
 
   return (
@@ -77,9 +51,7 @@ const SignatureDishes = () => {
           <button
             type="button"
             key={f.label}
-            className={`signature-filter-chip ${
-              activeFilter === f.key ? "signature-filter-chip--active" : ""
-            }`}
+            className="signature-filter-chip"
             onClick={() => handleFilterClick(f.key)}
           >
             {f.label}
@@ -88,11 +60,9 @@ const SignatureDishes = () => {
       </div>
 
       <div className="app__signature-container">
-        {visibleItems.map((item, index) => (
+        {topItems.map((item) => (
           <div
-            className={`signature-card ${
-              showAll && index >= menuItems.length ? "signature-card--new" : ""
-            } ${justClicked === item.name ? "signature-card--clicked" : ""}`}
+            className={`signature-card ${justClicked === item.name ? "signature-card--clicked" : ""}`}
             key={item.name}
             role="button"
             tabIndex={0}
@@ -108,7 +78,6 @@ const SignatureDishes = () => {
                 className="signature-img"
                 loading="lazy"
               />
-              {/* <div className="price-badge">₹{item.price}</div> */}
             </div>
 
             <div className="signature-content">
@@ -140,13 +109,9 @@ const SignatureDishes = () => {
           className="explore-menu-btn"
           onClick={handleExploreMenu}
         >
-          {showAll ? "SHOW LESS" : "EXPLORE MENU"}
+          EXPLORE MORE
         </button>
       </div>
-
-      {orderItem && (
-        <OrderScreen item={orderItem} onClose={() => setOrderItem(null)} />
-      )}
     </div>
   );
 };

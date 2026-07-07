@@ -6,17 +6,39 @@ import API from "../api/api";
 import { Navbar } from "../components";
 import OrderScreen from "./orderScreen/OrderScreen";
 import { CATEGORY_LABELS, MENU_CATEGORIES } from "../constants/restaurant";
+import { readCartFromStorage, writeCartToStorage } from "../utils/cartStorage";
 
 import "./MenuPage.css";
 
-const readCart = (stateCart) => {
-  if (Array.isArray(stateCart) && stateCart.length) return stateCart;
+const readCart = (stateCart) => readCartFromStorage(stateCart);
 
+const MENU_CACHE_KEY = "gk-menu-cache";
+const MENU_CACHE_TTL = 1000 * 60 * 15; // 15 minutes
+
+const readMenuCache = () => {
   try {
-    const stored = JSON.parse(localStorage.getItem("gk-cart") || "[]");
-    return Array.isArray(stored) ? stored : [];
+    const cached = JSON.parse(localStorage.getItem(MENU_CACHE_KEY) || "null");
+    if (
+      cached &&
+      Array.isArray(cached.data) &&
+      Date.now() - cached.timestamp < MENU_CACHE_TTL
+    ) {
+      return cached.data;
+    }
   } catch {
-    return [];
+    // ignore parse error
+  }
+  return null;
+};
+
+const writeMenuCache = (data) => {
+  try {
+    localStorage.setItem(
+      MENU_CACHE_KEY,
+      JSON.stringify({ timestamp: Date.now(), data }),
+    );
+  } catch {
+    // ignore storage errors
   }
 };
 
@@ -63,7 +85,9 @@ const transformMenuItem = (backendItem) => {
   return {
     id: backendItem.menu_id,
     name: backendItem.menu_name,
-    price: Number.isFinite(Number(backendItem.price)) ? parseFloat(backendItem.price) : 0,
+    price: Number.isFinite(Number(backendItem.price))
+      ? parseFloat(backendItem.price)
+      : 0,
     category: mappedCategory,
     type: mappedType,
     img: backendItem.image_url || backendItem.image || "",
@@ -81,11 +105,17 @@ const MenuPage = () => {
   const [menuError, setMenuError] = useState(null);
 
   useEffect(() => {
-    localStorage.setItem("gk-cart", JSON.stringify(cart));
+    writeCartToStorage(cart);
   }, [cart]);
 
   useEffect(() => {
     let isMounted = true;
+    const cachedMenu = readMenuCache();
+
+    if (cachedMenu) {
+      setMenuItems(cachedMenu);
+      setMenuLoading(false);
+    }
 
     const fetchMenu = async () => {
       try {
@@ -96,11 +126,15 @@ const MenuPage = () => {
 
         if (!isMounted) return;
 
-        setMenuItems(payload.map(transformMenuItem));
+        const transformed = payload.map(transformMenuItem);
+        setMenuItems(transformed);
+        writeMenuCache(transformed);
       } catch (error) {
         if (!isMounted) return;
         setMenuError("Unable to load live menu. Please try again later.");
-        setMenuItems([]);
+        if (!cachedMenu) {
+          setMenuItems([]);
+        }
       } finally {
         if (!isMounted) return;
         setMenuLoading(false);
@@ -123,14 +157,23 @@ const MenuPage = () => {
     [cart],
   );
 
+  const categoryFilter = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("category");
+  }, [location.search]);
+
   const groupedMenu = useMemo(
     () =>
       MENU_CATEGORIES.map((category) => ({
         category,
         label: CATEGORY_LABELS[category] || category,
         items: menuItems.filter((menuItem) => menuItem.category === category),
-      })).filter((group) => group.items.length),
-    [menuItems],
+      }))
+        .filter((group) => group.items.length)
+        .filter((group) =>
+          categoryFilter ? group.category === categoryFilter : true,
+        ),
+    [menuItems, categoryFilter],
   );
 
   const addItem = (menuItem) => {

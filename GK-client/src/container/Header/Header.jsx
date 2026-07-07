@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { SubHeading } from "../../components";
 import { images } from "../../constants";
 import "./Header.css";
@@ -20,6 +21,12 @@ const Header = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const navigate = useNavigate();
+
+  const handleExploreMenu = () => {
+    navigate("/menu");
+  };
+
   const handleFindLocation = () => {
     window.open(
       "https://maps.google.com/?q=Gouthams+Kitchen+Yelahanka+Bangalore",
@@ -39,7 +46,11 @@ const Header = () => {
             time!
           </p>
           <div className="app__header-buttons">
-            <button type="button" className="custom__button">
+            <button
+              type="button"
+              className="custom__button"
+              onClick={handleExploreMenu}
+            >
               Explore Menu
             </button>
             <button

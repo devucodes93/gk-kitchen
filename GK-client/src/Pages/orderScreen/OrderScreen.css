@@ -777,6 +777,139 @@
   margin: 0.5rem 0 0;
 }
 
+/* add-ons */
+.order-addon-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.6rem;
+}
+
+.order-addon-hint {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.order-addon-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+
+.order-addon-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(232, 163, 61, 0.12);
+  color: var(--saffron-deep);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.order-addon-empty {
+  margin: 0 0 0.5rem;
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+}
+
+.order-addon-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(36, 28, 20, 0.34);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 1200;
+}
+
+.order-addon-modal {
+  width: min(100%, 440px);
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.order-addon-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+
+.order-addon-modal-title {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  color: var(--ink);
+}
+
+.order-addon-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.order-addon-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.7rem 0.8rem;
+  background: var(--bg);
+}
+
+.order-addon-option-copy strong {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.order-addon-option-copy p {
+  margin: 0.2rem 0 0;
+  font-size: 0.76rem;
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+
+.order-addon-option-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.order-addon-option-actions span {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--saffron-deep);
+}
+
+.order-addon-option-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  background: rgba(232, 163, 61, 0.14);
+  color: var(--saffron-deep);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.order-addon-option-btn--active {
+  background: var(--saffron-deep);
+  color: #fff;
+}
+
 /* sticky footer */
 
 .order-footer {
