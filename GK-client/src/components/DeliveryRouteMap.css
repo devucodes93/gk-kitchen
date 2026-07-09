@@ -1,0 +1,73 @@
+.delivery-route-map,
+.delivery-route-empty {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(228, 232, 240, 0.95);
+  border-radius: 8px;
+  background: #eef2f7;
+}
+
+.delivery-route-empty,
+.delivery-route-loading {
+  display: grid;
+  place-items: center;
+  color: #687386;
+  font-weight: 700;
+}
+
+.delivery-route-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.delivery-route-pill {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 5;
+  border-radius: 999px;
+  background: rgba(23, 19, 16, 0.86);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 9px 12px;
+  text-align: center;
+  backdrop-filter: blur(6px);
+}
+
+.delivery-route-note {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 14px;
+  z-index: 5;
+  border-radius: 8px;
+  background: rgba(255, 246, 220, 0.94);
+  color: #8a6100;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+}
+
+.delivery-route-accuracy {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 54px;
+  z-index: 5;
+  border-radius: 8px;
+  background: rgba(235, 248, 239, 0.94);
+  color: #17693f;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.delivery-route-accuracy--low {
+  background: rgba(255, 246, 220, 0.96);
+  color: #8a6100;
+}

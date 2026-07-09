@@ -6,11 +6,14 @@ const {
   getMenu,
   updateMenu,
   deleteMenu,
+  updateMenuStatus,
+  updateMenuPrice,
 } = require("../controller/menuController");
+const protect = require("../middleware/authMiddleware");
 const role = require("../middleware/roleMiddleware");
 
 // Create Menu
-router.post("/", role("admin"), AddMenu);
+router.post("/", protect, role("admin"), AddMenu);
 
 // Get All Menu
 router.get("/", fetchMenu);
@@ -19,9 +22,11 @@ router.get("/", fetchMenu);
 router.get("/:id", getMenu);
 
 // Update Menu
-router.put("/:id", role("admin"), updateMenu);
+router.put("/:id", protect, role("admin"), updateMenu);
+router.patch("/:id/status", protect, role("admin"), updateMenuStatus);
+router.patch("/:id/price", protect, role("admin"), updateMenuPrice);
 
 // Delete Menu
-router.delete("/:id", role("admin"), deleteMenu);
+router.delete("/:id", protect, role("admin"), deleteMenu);
 
 module.exports = router;

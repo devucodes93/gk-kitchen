@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { FaShoppingCart } from "react-icons/fa";
+import { FaHistory, FaRedo, FaShoppingCart, FaUtensils } from "react-icons/fa";
 
 import API from "../api/api";
 import { Navbar } from "../components";
+import DeliveryRouteMap from "../components/DeliveryRouteMap";
 import OrderScreen from "./orderScreen/OrderScreen";
 import { CATEGORY_LABELS, MENU_CATEGORIES } from "../constants/restaurant";
 import { readCartFromStorage, writeCartToStorage } from "../utils/cartStorage";
@@ -39,6 +40,16 @@ const writeMenuCache = (data) => {
     );
   } catch {
     // ignore storage errors
+  }
+};
+
+const parseOrderItems = (items) => {
+  if (Array.isArray(items)) return items;
+  try {
+    const parsed = JSON.parse(items || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
 };
 
@@ -103,6 +114,17 @@ const MenuPage = () => {
   const [menuItems, setMenuItems] = useState([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState(null);
+  const [activeTab, setActiveTab] = useState("menu");
+  const [pastOrders, setPastOrders] = useState([]);
+  const [pastOrdersLoading, setPastOrdersLoading] = useState(false);
+  const [pastOrdersLoaded, setPastOrdersLoaded] = useState(false);
+  const [trackingOrder, setTrackingOrder] = useState(null);
+  const [routeInfo, setRouteInfo] = useState(null);
+  const [acceptingOrders, setAcceptingOrders] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(() =>
+    Boolean(localStorage.getItem("token")),
+  );
+  const [loginNotice, setLoginNotice] = useState("");
 
   useEffect(() => {
     writeCartToStorage(cart);
@@ -143,10 +165,66 @@ const MenuPage = () => {
 
     fetchMenu();
 
+    const fetchRestaurantStatus = async () => {
+      try {
+        const response = await API.get("/restaurant");
+        if (isMounted) {
+          setAcceptingOrders(response.data?.data?.is_accepting_orders !== false);
+        }
+      } catch {
+        if (isMounted) setAcceptingOrders(true);
+      }
+    };
+
+    fetchRestaurantStatus();
+    const statusIntervalId = setInterval(fetchRestaurantStatus, 15000);
+
     return () => {
       isMounted = false;
+      clearInterval(statusIntervalId);
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPastOrders = async () => {
+      const token = localStorage.getItem("token");
+      setIsLoggedIn(Boolean(token));
+
+      if (!token) {
+        if (isMounted) {
+          setPastOrders([]);
+          setPastOrdersLoaded(true);
+          setPastOrdersLoading(false);
+        }
+        return;
+      }
+
+      if (!pastOrdersLoaded) setPastOrdersLoading(true);
+      try {
+        const response = await API.get("/orders/my-orders");
+        if (isMounted) {
+          setPastOrders(response.data.orders || []);
+          setPastOrdersLoaded(true);
+        }
+      } catch {
+        if (isMounted) {
+          setPastOrders([]);
+          setPastOrdersLoaded(true);
+        }
+      } finally {
+        if (isMounted) setPastOrdersLoading(false);
+      }
+    };
+
+    fetchPastOrders();
+    const ordersIntervalId = setInterval(fetchPastOrders, 8000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(ordersIntervalId);
+    };
+  }, [pastOrdersLoaded]);
 
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
@@ -176,7 +254,40 @@ const MenuPage = () => {
     [menuItems, categoryFilter],
   );
 
+  const activeOrder = useMemo(
+    () =>
+      pastOrders.find(
+        (order) =>
+          !["Delivered", "Cancelled"].includes(order.status || "Pending"),
+      ),
+    [pastOrders],
+  );
+
+  const activeOrderMessage = useMemo(() => {
+    if (!activeOrder) return "";
+    const status = activeOrder.status || "Pending";
+    if (status === "Pending") return "Thanks for ordering. We have received it and will start soon.";
+    if (status === "Preparing") return "Your food is being prepared with care.";
+    if (status === "Ready") return "Your order is ready and waiting for dispatch.";
+    if (status === "Out for Delivery") return "Your order is on the way. Please keep your phone nearby.";
+    return "We are taking care of your order.";
+  }, [activeOrder]);
+
+  useEffect(() => {
+    if (!trackingOrder) return;
+    const latestOrder = pastOrders.find((order) => order.id === trackingOrder.id);
+    if (latestOrder) setTrackingOrder(latestOrder);
+  }, [pastOrders, trackingOrder]);
+
   const addItem = (menuItem) => {
+    if (!isLoggedIn) {
+      setLoginNotice(
+        "Please login from the navbar before ordering. Then your order history and tracking stay saved.",
+      );
+      return;
+    }
+    if (!acceptingOrders) return;
+    setLoginNotice("");
     setCart((currentCart) => {
       const existing = currentCart.find((item) => item.name === menuItem.name);
       if (!existing) {
@@ -204,7 +315,43 @@ const MenuPage = () => {
   };
 
   const handleCheckout = () => {
+    if (!isLoggedIn) {
+      setLoginNotice("Please login from the navbar before checkout.");
+      return;
+    }
+    if (!acceptingOrders) return;
     if (!cart.length) return;
+    setLoginNotice("");
+    setCheckoutOpen(true);
+  };
+
+  const repeatOrder = (order) => {
+    const repeatedItems = parseOrderItems(order.items)
+      .map((orderItem) => {
+        const matchingMenuItem = menuItems.find(
+          (menuItem) =>
+            menuItem.name === orderItem.name ||
+            menuItem.name === orderItem.menu_name,
+        );
+
+        if (!matchingMenuItem) return null;
+
+        return {
+          ...matchingMenuItem,
+          quantity: orderItem.quantity || 1,
+        };
+      })
+      .filter(Boolean);
+
+    if (!repeatedItems.length) return;
+
+    if (!isLoggedIn) {
+      setLoginNotice("Please login before repeating an order.");
+      return;
+    }
+
+    setCart(repeatedItems);
+    setActiveTab("menu");
     setCheckoutOpen(true);
   };
 
@@ -223,9 +370,48 @@ const MenuPage = () => {
         </section>
 
         <section className="menu-page-layout">
+          {isLoggedIn && (
+            <div className="menu-page-tabs">
+              <button
+                type="button"
+                className={activeTab === "menu" ? "active" : ""}
+                onClick={() => setActiveTab("menu")}
+              >
+                <FaUtensils /> Menu
+              </button>
+              <button
+                type="button"
+                className={activeTab === "orders" ? "active" : ""}
+                onClick={() => setActiveTab("orders")}
+              >
+                <FaHistory /> Past orders
+              </button>
+            </div>
+          )}
+
           <div className="menu-page-page-metadata">
+            {!acceptingOrders && (
+              <div className="menu-page-offline-banner">
+                <strong>Delivery is currently not available.</strong>
+                <span>Please visit our place, or check back later for online ordering.</span>
+              </div>
+            )}
             {menuLoading && (
               <div className="menu-page-status">Loading menu…</div>
+            )}
+            {!isLoggedIn && (
+              <div className="menu-page-login-banner">
+                <strong>Login is required to order online.</strong>
+                <span>
+                  Use the Login button in the navbar, then your active order and
+                  past orders will stay saved safely.
+                </span>
+              </div>
+            )}
+            {loginNotice && (
+              <div className="menu-page-status menu-page-status--error">
+                {loginNotice}
+              </div>
             )}
             {!menuLoading && menuError && (
               <div className="menu-page-status menu-page-status--error">
@@ -239,6 +425,47 @@ const MenuPage = () => {
             )}
           </div>
 
+          {activeTab === "orders" ? (
+            <section className="menu-page-orders-panel">
+              {pastOrdersLoading && <div className="menu-page-status">Loading past orders...</div>}
+              {pastOrdersLoaded && !pastOrdersLoading && !pastOrders.length && (
+                <div className="menu-page-status menu-page-status--empty">
+                  No past orders yet.
+                </div>
+              )}
+              <div className="menu-page-orders-list">
+                {pastOrders.map((order) => {
+                  const orderItems = parseOrderItems(order.items);
+                  return (
+                    <article className="menu-page-order-card" key={order.id}>
+                      <div className="menu-page-order-card-top">
+                        <div>
+                          <h3>Order #{order.id}</h3>
+                          <p>{new Date(order.created_at).toLocaleString()}</p>
+                        </div>
+                        <span>{order.status || "Pending"}</span>
+                      </div>
+                      <div className="menu-page-order-items">
+                        {orderItems.map((orderItem, index) => (
+                          <span key={`${orderItem.name}-${index}`}>
+                            {orderItem.quantity || 1} x {orderItem.name || orderItem.menu_name || "Item"}
+                            {orderItem.price ? ` - ₹${orderItem.price}` : ""}
+                            {orderItem.item_type === "addon" ? " add-on" : ""}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="menu-page-order-footer">
+                        <strong>₹{order.total_price}</strong>
+                        <button type="button" onClick={() => repeatOrder(order)}>
+                          <FaRedo /> Repeat
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : (
           <div className="menu-page-sections">
             {groupedMenu.map((group) => (
               <section
@@ -264,6 +491,8 @@ const MenuPage = () => {
                         cart.find((item) => item.name === menuItem.name)
                           ?.quantity || 0;
                       const unavailable = menuItem.available === false;
+                      const orderingDisabled =
+                        unavailable || !acceptingOrders || !isLoggedIn;
 
                       return (
                         <article
@@ -318,7 +547,7 @@ const MenuPage = () => {
                                     type="button"
                                     className="menu-page-qty-btn"
                                     onClick={() => addItem(menuItem)}
-                                    disabled={unavailable}
+                                    disabled={orderingDisabled}
                                   >
                                     +
                                   </button>
@@ -328,9 +557,15 @@ const MenuPage = () => {
                                   type="button"
                                   className="menu-page-add-btn"
                                   onClick={() => addItem(menuItem)}
-                                  disabled={unavailable}
+                                  disabled={orderingDisabled}
                                 >
-                                  {unavailable ? "Unavailable" : "Add to cart"}
+                                  {!acceptingOrders
+                                    ? "Delivery closed"
+                                    : !isLoggedIn
+                                      ? "Login to order"
+                                    : unavailable
+                                      ? "Unavailable"
+                                      : "Add to cart"}
                                 </button>
                               )}
                             </div>
@@ -343,13 +578,16 @@ const MenuPage = () => {
               </section>
             ))}
           </div>
+          )}
         </section>
 
         <button
           type="button"
-          className="menu-page-cart-fab"
+          className={`menu-page-cart-fab ${
+            activeOrder ? "menu-page-cart-fab--with-tracker" : ""
+          }`}
           onClick={handleCheckout}
-          disabled={!cart.length}
+          disabled={!cart.length || !acceptingOrders || !isLoggedIn}
         >
           <span className="menu-page-cart-fab-icon">
             <FaShoppingCart />
@@ -358,7 +596,13 @@ const MenuPage = () => {
             <strong>
               {cartCount} item{cartCount === 1 ? "" : "s"}
             </strong>
-            <span>Checkout</span>
+            <span>
+              {!isLoggedIn
+                ? "Login to checkout"
+                : acceptingOrders
+                  ? "Checkout"
+                  : "Delivery closed"}
+            </span>
           </span>
           <span className="menu-page-cart-fab-total">₹{subtotal}</span>
         </button>
@@ -372,6 +616,71 @@ const MenuPage = () => {
           onClose={closeCheckout}
           menuItems={menuItems}
         />
+      )}
+
+      {activeOrder && !checkoutOpen && (
+        <div className="menu-page-track-bar">
+          <div>
+            <strong>Order #{activeOrder.id}</strong>
+            <span>{activeOrder.status || "Pending"} · {activeOrderMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setRouteInfo(null);
+              setTrackingOrder(activeOrder);
+            }}
+          >
+            Track
+          </button>
+        </div>
+      )}
+
+      {trackingOrder && (
+        <div
+          className="menu-page-track-modal-backdrop"
+          onClick={() => setTrackingOrder(null)}
+        >
+          <div
+            className="menu-page-track-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="menu-page-track-close"
+              onClick={() => setTrackingOrder(null)}
+            >
+              Close
+            </button>
+            <p className="menu-page-kicker">ORDER TRACKING</p>
+            <h2>Order #{trackingOrder.id}</h2>
+            <div className="menu-page-track-status">
+              <strong>{trackingOrder.status || "Pending"}</strong>
+              <span>{activeOrderMessage}</span>
+            </div>
+            {trackingOrder.delivery_lat && trackingOrder.delivery_lng ? (
+              <DeliveryRouteMap
+                destination={{
+                  lat: trackingOrder.delivery_lat,
+                  lng: trackingOrder.delivery_lng,
+                }}
+                originLabel="Kitchen"
+                destinationLabel="You"
+                height={320}
+                onRouteInfo={setRouteInfo}
+              />
+            ) : (
+              <div className="menu-page-status menu-page-status--empty">
+                Map location is not available for this order.
+              </div>
+            )}
+            <p className="menu-page-track-note">
+              {routeInfo
+                ? `Estimated travel time is about ${routeInfo.durationMinutes} minutes once the order leaves the kitchen.`
+                : "We will update the order status as the restaurant prepares and dispatches it."}
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

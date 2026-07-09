@@ -15,7 +15,7 @@ import {
 import "./OrderScreen.css";
 
 // TODO: replace with your real backend path
-const ORDER_API_ENDPOINT = "/api/orders/place";
+const ORDER_API_ENDPOINT = "http://localhost:5000/api/orders/place-order";
 const ADDON_OPTIONS = [
   {
     id: "raita",
@@ -89,9 +89,14 @@ const OrderScreen = ({
   const [location, setLocation] = useState(null);
   const [locating, setLocating] = useState(false);
   const [status, setStatus] = useState("idle");
+  const [errorMessage, setErrorMessage] = useState("");
   const [orderId, setOrderId] = useState(null);
   const [showAddonsModal, setShowAddonsModal] = useState(false);
   const [addonSelections, setAddonSelections] = useState([]);
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [savedPhone, setSavedPhone] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+  const [pastOrders, setPastOrders] = useState([]);
 
   const activeCart = cart.length ? cart : [{ ...item, quantity }];
   const cartCount = useMemo(
@@ -148,6 +153,49 @@ const OrderScreen = ({
   useEffect(() => {
     writeCartToStorage(cart);
   }, [cart]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    let isMounted = true;
+
+    const loadCustomerData = async () => {
+      try {
+        const [meRes, ordersRes] = await Promise.all([
+          fetch("http://localhost:5000/api/auth/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch("http://localhost:5000/api/orders/my-orders", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          if (meData.token) localStorage.setItem("token", meData.token);
+          const phone = meData.user?.phone || "";
+          if (isMounted && phone) {
+            setSavedPhone(phone);
+            setCustomerPhone(phone);
+          }
+        }
+
+        if (ordersRes.ok) {
+          const ordersData = await ordersRes.json();
+          if (isMounted) setPastOrders(ordersData.orders || []);
+        }
+      } catch (error) {
+        console.warn("Unable to load customer order data:", error);
+      }
+    };
+
+    loadCustomerData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSelectMore = () => {
     const nextCart = cart.length ? cart : [{ ...item, quantity }];
@@ -295,7 +343,20 @@ const OrderScreen = ({
 
   const handlePlaceOrder = async () => {
     if (!location) return;
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setErrorMessage("Please login before placing your order.");
+      setStatus("error");
+      return;
+    }
+    if (!customerPhone.trim()) {
+      setPhoneError("Please enter a phone number for this order.");
+      return;
+    }
+
     setStatus("submitting");
+    setPhoneError("");
+    setErrorMessage("");
 
     const storedUser = JSON.parse(localStorage.getItem("user") || "null") || {};
 
@@ -318,6 +379,7 @@ const OrderScreen = ({
       },
       addons: addonSelections,
       paymentMethod,
+      phone_number: customerPhone.trim(),
       preferences,
       instructions: instructions.trim(),
       location,
@@ -328,17 +390,16 @@ const OrderScreen = ({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(storedUser.token
-            ? { Authorization: `Bearer ${storedUser.token}` }
-            : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Order request failed");
       const data = await res.json();
-      setOrderId(data.orderId || data.id || "—");
+      if (!res.ok) throw new Error(data.message || "Order request failed");
+      setOrderId(data.data?.id || data.orderId || data.id || "—");
       setStatus("success");
-    } catch {
+    } catch (error) {
+      setErrorMessage(error.message || "Couldn't place the order. Please try again.");
       setStatus("error");
     }
   };
@@ -653,6 +714,38 @@ const OrderScreen = ({
   // STEP 2 of checkout: delivery location, instructions, preferences, payment.
   const renderCheckoutDeliveryStage = () => (
     <>
+      {!savedPhone && (
+        <>
+          <div className="order-block">
+            <p className="order-block-label">Phone number</p>
+            <input
+              className="order-input"
+              inputMode="tel"
+              value={customerPhone}
+              onChange={(e) => {
+                setCustomerPhone(e.target.value);
+                setPhoneError("");
+              }}
+              placeholder="Enter your phone number"
+            />
+            {phoneError && <p className="order-error-text">{phoneError}</p>}
+          </div>
+
+          <div className="order-divider" />
+        </>
+      )}
+
+      {savedPhone && (
+        <>
+          <div className="order-block">
+            <p className="order-block-label">Phone number</p>
+            <div className="order-saved-phone">{savedPhone}</div>
+          </div>
+
+          <div className="order-divider" />
+        </>
+      )}
+
       <div className="order-block">
         <p className="order-block-label">Deliver to</p>
         <div className="order-location-card">
@@ -768,8 +861,26 @@ const OrderScreen = ({
 
       {status === "error" && (
         <p className="order-error-text">
-          Couldn't place the order. Please try again.
+          {errorMessage || "Couldn't place the order. Please try again."}
         </p>
+      )}
+
+      {pastOrders.length > 0 && (
+        <>
+          <div className="order-divider" />
+          <div className="order-block">
+            <p className="order-block-label">Past orders</p>
+            <div className="order-past-list">
+              {pastOrders.slice(0, 3).map((pastOrder) => (
+                <div className="order-past-row" key={pastOrder.id}>
+                  <span>Order #{pastOrder.id}</span>
+                  <strong>₹{pastOrder.total_price}</strong>
+                  <small>{pastOrder.status || "Pending"}</small>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </>
   );
@@ -798,7 +909,7 @@ const OrderScreen = ({
             <h2 className="headtext__cormorant order-result-title">
               Order placed
             </h2>
-            <p className="p__opensans order-result-text">
+            <p className=" order-result-text">
               Order <strong>#{orderId}</strong> for {cartCount} item
               {cartCount === 1 ? "" : "s"} is confirmed. We'll reach out shortly
               to arrange delivery.
@@ -939,7 +1050,11 @@ const OrderScreen = ({
                       type="button"
                       className="order-cta"
                       onClick={handlePlaceOrder}
-                      disabled={!location || status === "submitting"}
+                      disabled={
+                        !location ||
+                        !customerPhone.trim() ||
+                        status === "submitting"
+                      }
                     >
                       {status === "submitting" ? <Spinner /> : "Place Order"}
                     </button>

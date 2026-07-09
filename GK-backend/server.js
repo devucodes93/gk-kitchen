@@ -13,6 +13,10 @@ const passport = require("./src/config/passport");
 const SignupRoute = require("./src/routes/signupRoutes");
 const orderRoutes = require("./src/routes/orderRoutes.js")
 const menueRoutes = require("./src/routes/menuRoutes.js")
+const adminRoutes = require("./src/routes/adminRoutes.js")
+const riderRoutes = require("./src/routes/riderRoutes.js")
+const restaurantRoutes = require("./src/routes/restaurantRoutes.js")
+const { ensureUserColumns } = require("./src/controller/signupController.js")
 
 const app = express();
 
@@ -25,6 +29,7 @@ app.use(express.json({ limit: "20mb" }));
 (async () => {
   try {
     await pool.query("SELECT 1");
+    await ensureUserColumns();
     console.log("✅ PostgreSQL Database Connected");
   } catch (err) {
     console.error("❌ PostgreSQL Database Connection Failed:", err.message);
@@ -47,6 +52,9 @@ app.use("/api/auth", userRoutes);       // GET  /api/auth/google, GET /api/auth/
 app.use("/api/orders", orderRoutes);
 
 app.use("/api/menu", menueRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/rider", riderRoutes);
+app.use("/api/restaurant", restaurantRoutes);
 
 // List endpoints AFTER routes are registered
 console.log("Registered endpoints:", listEndpoints(app));
