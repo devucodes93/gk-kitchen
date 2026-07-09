@@ -177,7 +177,7 @@ const MenuPage = () => {
     };
 
     fetchRestaurantStatus();
-    const statusIntervalId = setInterval(fetchRestaurantStatus, 15000);
+    const statusIntervalId = setInterval(fetchRestaurantStatus, 30000);
 
     return () => {
       isMounted = false;
@@ -218,7 +218,7 @@ const MenuPage = () => {
     };
 
     fetchPastOrders();
-    const ordersIntervalId = setInterval(fetchPastOrders, 8000);
+    const ordersIntervalId = setInterval(fetchPastOrders, 20000);
 
     return () => {
       isMounted = false;

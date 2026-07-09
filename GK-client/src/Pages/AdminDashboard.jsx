@@ -102,6 +102,8 @@ const AdminDashboard = () => {
   const [busyOrderId, setBusyOrderId] = useState(null);
   const knownOrderIds = useRef(new Set());
   const notificationsReady = useRef(false);
+  const livePollBusy = useRef(false);
+  const referencePollBusy = useRef(false);
 
   const [dashboard, setDashboard] = useState({});
   const [menuItems, setMenuItems] = useState([]);
@@ -305,6 +307,8 @@ const AdminDashboard = () => {
     if (needsAdminLogin) return undefined;
 
     const pollForUpdates = async () => {
+      if (livePollBusy.current) return;
+      livePollBusy.current = true;
       try {
         const adminToken = localStorage.getItem("adminToken");
         if (!adminToken) return;
@@ -339,10 +343,14 @@ const AdminDashboard = () => {
         );
       } catch {
         // The main load path already reports API/auth errors.
+      } finally {
+        livePollBusy.current = false;
       }
     };
 
     const pollForReferenceData = async () => {
+      if (referencePollBusy.current) return;
+      referencePollBusy.current = true;
       try {
         const adminToken = localStorage.getItem("adminToken");
         if (!adminToken) return;
@@ -361,11 +369,13 @@ const AdminDashboard = () => {
         setCategories(unwrap(categoriesRes));
       } catch {
         // Keep current data during a background sync miss.
+      } finally {
+        referencePollBusy.current = false;
       }
     };
 
-    const ordersIntervalId = setInterval(pollForUpdates, 5000);
-    const dataIntervalId = setInterval(pollForReferenceData, 15000);
+    const ordersIntervalId = setInterval(pollForUpdates, 12000);
+    const dataIntervalId = setInterval(pollForReferenceData, 60000);
     return () => {
       clearInterval(ordersIntervalId);
       clearInterval(dataIntervalId);

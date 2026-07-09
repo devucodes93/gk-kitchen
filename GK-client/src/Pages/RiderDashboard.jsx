@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FaCheck,
   FaMapMarkerAlt,
@@ -40,6 +40,7 @@ const RiderDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
   const [actionOrderId, setActionOrderId] = useState(null);
+  const fetchBusy = useRef(false);
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -63,6 +64,8 @@ const RiderDashboard = () => {
   );
 
   const fetchOrders = async ({ silent = false } = {}) => {
+    if (fetchBusy.current) return;
+    fetchBusy.current = true;
     if (!silent) {
       setLoading(true);
       setInitialLoading(true);
@@ -87,6 +90,7 @@ const RiderDashboard = () => {
         );
       }
     } finally {
+      fetchBusy.current = false;
       if (!silent) {
         setLoading(false);
         setInitialLoading(false);
@@ -98,7 +102,7 @@ const RiderDashboard = () => {
     if (needsLogin) return undefined;
 
     fetchOrders();
-    const intervalId = setInterval(() => fetchOrders({ silent: true }), 5000);
+    const intervalId = setInterval(() => fetchOrders({ silent: true }), 12000);
     return () => clearInterval(intervalId);
   }, [needsLogin]);
 

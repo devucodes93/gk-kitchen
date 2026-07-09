@@ -186,7 +186,7 @@ const getOrders = async (req, res) => {
   try {
     await ensureOrderColumns();
     const result = await pool.query(
-      "SELECT * FROM orders ORDER BY created_at DESC"
+      "SELECT * FROM orders ORDER BY created_at DESC LIMIT 200"
     );
 
     res.status(200).json({

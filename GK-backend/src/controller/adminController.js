@@ -1,7 +1,14 @@
 const bcrypt = require("bcrypt");
 const pool = require("../config/db");
 
+let adminSchemaReady = false;
+let adminSchemaPromise = null;
+
 const ensureAdminTables = async () => {
+  if (adminSchemaReady) return;
+  if (adminSchemaPromise) return adminSchemaPromise;
+
+  adminSchemaPromise = (async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS offers (
       id SERIAL PRIMARY KEY,
@@ -58,44 +65,48 @@ const ensureAdminTables = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+    adminSchemaReady = true;
+  })().finally(() => {
+    adminSchemaPromise = null;
+  });
+
+  return adminSchemaPromise;
 };
 
 const getDashboard = async (req, res) => {
   try {
     await ensureAdminTables();
 
-    const [orders, menu, customers] = await Promise.all([
-      pool.query("SELECT * FROM orders ORDER BY created_at DESC"),
-      pool.query("SELECT * FROM menu ORDER BY menu_id DESC"),
-      pool.query("SELECT id, name, email, phone, picture FROM users ORDER BY id DESC"),
+    const [stats, recentOrders] = await Promise.all([
+      pool.query(`
+        SELECT
+          COALESCE(SUM(total_price), 0) AS total_revenue,
+          COALESCE(SUM(total_price) FILTER (WHERE created_at::date = CURRENT_DATE), 0) AS todays_revenue,
+          COUNT(*) AS total_orders,
+          COUNT(*) FILTER (WHERE COALESCE(status, 'Pending') = 'Pending') AS pending_orders,
+          COUNT(*) FILTER (WHERE COALESCE(status, 'Pending') = 'Delivered') AS completed_orders,
+          COUNT(*) FILTER (WHERE COALESCE(status, 'Pending') = 'Cancelled') AS cancelled_orders,
+          (SELECT COUNT(*) FROM users) AS total_customers,
+          (SELECT COUNT(*) FROM menu) AS total_menu_items
+        FROM orders
+      `),
+      pool.query("SELECT * FROM orders ORDER BY created_at DESC LIMIT 8"),
     ]);
 
-    const today = new Date().toISOString().slice(0, 10);
-    const totalRevenue = orders.rows.reduce(
-      (sum, order) => sum + Number(order.total_price || 0),
-      0,
-    );
-    const todaysRevenue = orders.rows
-      .filter((order) => String(order.created_at || "").slice(0, 10) === today)
-      .reduce((sum, order) => sum + Number(order.total_price || 0), 0);
-
-    const byStatus = (status) =>
-      orders.rows.filter(
-        (order) => String(order.status || "Pending").toLowerCase() === status.toLowerCase(),
-      ).length;
+    const row = stats.rows[0] || {};
 
     res.json({
       success: true,
       data: {
-        totalRevenue,
-        todaysRevenue,
-        totalOrders: orders.rows.length,
-        pendingOrders: byStatus("Pending"),
-        completedOrders: byStatus("Delivered"),
-        cancelledOrders: byStatus("Cancelled"),
-        totalCustomers: customers.rows.length,
-        totalMenuItems: menu.rows.length,
-        recentOrders: orders.rows.slice(0, 8),
+        totalRevenue: Number(row.total_revenue || 0),
+        todaysRevenue: Number(row.todays_revenue || 0),
+        totalOrders: Number(row.total_orders || 0),
+        pendingOrders: Number(row.pending_orders || 0),
+        completedOrders: Number(row.completed_orders || 0),
+        cancelledOrders: Number(row.cancelled_orders || 0),
+        totalCustomers: Number(row.total_customers || 0),
+        totalMenuItems: Number(row.total_menu_items || 0),
+        recentOrders: recentOrders.rows,
       },
     });
   } catch (error) {
