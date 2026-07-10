@@ -4,6 +4,7 @@ const protect = require("../middleware/authMiddleware");
 const role = require("../middleware/roleMiddleware");
 const {
   getDashboard,
+  getBootstrap,
   getCustomers,
   getCustomer,
   getOffers,
@@ -22,6 +23,7 @@ const {
 router.use(protect, role("admin"));
 
 router.get("/dashboard", getDashboard);
+router.get("/bootstrap", getBootstrap);
 router.get("/customers", getCustomers);
 router.get("/customers/:id", getCustomer);
 router.get("/offers", getOffers);

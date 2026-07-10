@@ -27,6 +27,13 @@ const Navbar = () => {
   const navigate = useNavigate();
 
   const isHomePage = location.pathname === "/";
+  const isMenuPage = location.pathname.startsWith("/menu");
+  // The scroll handler below only knows how to read light/dark from the
+  // homepage's sections (it looks for a `#home` element). On other routes
+  // it just keeps whatever navStyle it started with, which defaults to the
+  // dark "solid" look. The menu page is a permanently light page, so force
+  // the light navbar there instead of relying on that scroll detection.
+  const effectiveLight = isMenuPage ? true : isLight;
 
   const handleNavClick = (link, event) => {
     event.preventDefault();
@@ -109,8 +116,9 @@ const Navbar = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const navClass =
-    navStyle === "solid"
+  const navClass = isMenuPage
+    ? "navbar--dark"
+    : navStyle === "solid"
       ? "navbar--solid"
       : isLight
         ? "navbar--light"
@@ -216,7 +224,7 @@ const Navbar = () => {
 
         <div className="app__navbar-smallscreen">
           <GiHamburgerMenu
-            color={isLight ? "#000" : "#fff"}
+            color={effectiveLight ? "#000" : "#fff"}
             fontSize={24}
             onClick={() => setToggleMenu(true)}
           />
@@ -245,6 +253,41 @@ const Navbar = () => {
                   </li>
                 ))}
               </ul>
+
+              <div className="overlay__account">
+                {user ? (
+                  <div className="overlay__user">
+                    <img
+                      src={user.picture}
+                      alt="profile"
+                      className="overlay__avatar"
+                    />
+                    <button
+                      type="button"
+                      className="overlay__logout-btn"
+                      onClick={() => {
+                        localStorage.removeItem("token");
+                        window.location.reload();
+                      }}
+                    >
+                      Logout
+                    </button>
+                  </div>
+                ) : (
+                  <a
+                    href="#login"
+                    className="overlay__login-link"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setToggleMenu(false);
+                      setIsLoginOpen(true);
+                    }}
+                  >
+                    Log In
+                  </a>
+                )}
+              </div>
+
               <a href="/" className="overlay__book-btn">
                 Book a Table
               </a>

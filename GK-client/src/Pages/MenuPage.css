@@ -4,17 +4,22 @@
    Tokens — one accent per menu category, reused on sidebar dots,
    card badges, and the active-section glow so color always means
    the same thing wherever it shows up.
+
+   LIGHT THEME: --gk-ink is now the page background (warm off-white),
+   --gk-cream is now the main text color (dark ink), --gk-ink-soft is
+   a slightly-lifted white surface for the fab/tab-bar/modal, and
+   --gk-line is a soft dark hairline at low opacity.
 ---------------------------------------------------------------- */
 .menu-page {
-  --gk-ink: #17130f;
-  --gk-ink-soft: #211b15;
-  --gk-cream: #f3e8d8;
-  --gk-muted: #a08d7a;
-  --gk-line: rgba(243, 232, 216, 0.12);
-  --gk-saffron: #e7a33e;
+  --gk-ink: #faf3e7;
+  --gk-ink-soft: #fffcf6;
+  --gk-cream: #241c12;
+  --gk-muted: #7c6a56;
+  --gk-line: rgba(36, 28, 18, 0.12);
+  --gk-saffron: #c9820c;
   --gk-brick: #a83a2a;
-  --gk-ember: #d9702d;
-  --gk-leaf: #6f8f5c;
+  --gk-ember: #c05f1f;
+  --gk-leaf: #52713f;
 
   background: var(--gk-ink);
   color: var(--gk-cream);
@@ -48,9 +53,9 @@
   background-image:
     linear-gradient(
       180deg,
-      rgba(23, 19, 15, 0.25) 0%,
-      rgba(23, 19, 15, 0.72) 68%,
-      rgba(23, 19, 15, 0.96) 100%
+      rgba(250, 243, 231, 0.1) 0%,
+      rgba(250, 243, 231, 0.82) 68%,
+      rgba(250, 243, 231, 0.97) 100%
     ),
     var(--gk-hero-image);
   background-size: cover;
@@ -78,6 +83,7 @@
   font-size: clamp(2.1rem, 5vw, 3.4rem);
   margin: 0 0 12px;
   line-height: 1.05;
+  text-shadow: 0 1px 24px rgba(250, 243, 231, 0.6);
 }
 
 .menu-page-hero-meta {
@@ -159,7 +165,7 @@
 
 .menu-page-status--error {
   border-left-color: var(--gk-brick);
-  color: #e3a99b;
+  color: #8a3427;
 }
 
 .menu-page-status--empty {
@@ -282,36 +288,40 @@
 }
 
 /* ---------------------------------------------------------------
-   Masonry grid — variable image heights are the point, so images
-   keep their natural aspect ratio instead of being cropped square.
+   Grid — real CSS Grid, not multi-column masonry. Masonry (the old
+   `columns:` approach) balances cards by column height, so a single
+   tall card can strand a short row and leave an ugly gap when a
+   section only has a few dishes. A row-based grid always lines
+   cards up evenly, however many there are. Fixing every dish photo
+   to the same aspect ratio (below) keeps card heights consistent
+   too, so rows stay tidy instead of jagged.
 ---------------------------------------------------------------- */
 .menu-page-grid {
-  columns: 4 260px;
-  column-gap: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+  align-items: start;
 }
 
 .menu-page-card {
-  display: inline-block;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  break-inside: avoid;
-  margin-bottom: 20px;
   border-radius: 16px;
   overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    rgba(243, 232, 216, 0.05),
-    rgba(243, 232, 216, 0.015)
-  );
+  background: var(--gk-ink-soft);
   border: 1px solid var(--gk-line);
-  backdrop-filter: blur(6px);
+  box-shadow: 0 1px 3px rgba(36, 28, 18, 0.05);
   transition:
     transform 0.3s ease,
-    border-color 0.3s ease;
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 .menu-page-card:hover {
   transform: translateY(-4px);
   border-color: var(--gk-accent);
+  box-shadow: 0 10px 24px rgba(36, 28, 18, 0.1);
 }
 
 .menu-page-card-media {
@@ -328,12 +338,24 @@
   transition: transform 0.5s ease;
 }
 
+/* Fixed ratio only from tablet width up, where cards sit in a
+   multi-column row — that's what keeps every card the same height
+   so the grid never leaves an uneven gap under a shorter card. On
+   phone the grid is a single column already, so there's nothing to
+   line up: images show at their natural, uncropped size. */
+@media (min-width: 641px) {
+  .menu-page-card-img {
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+  }
+}
+
 .menu-page-card:hover .menu-page-card-img {
   transform: scale(1.045);
 }
 
 .menu-page-card--unavailable .menu-page-card-img {
-  filter: grayscale(0.85) brightness(0.55);
+  filter: grayscale(0.85) brightness(0.75);
 }
 
 /* Veg / non-veg marker — a small ringed dot instead of a text pill */
@@ -344,7 +366,7 @@
   width: 13px;
   height: 13px;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px rgba(23, 19, 15, 0.65);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
 }
 
 .menu-page-badge--veg {
@@ -376,8 +398,8 @@
   font-weight: 700;
 
   border-radius: 999px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  border: 2px solid rgba(255, 255, 255, 0.5);
 
   z-index: 5;
 }
@@ -397,12 +419,16 @@
   letter-spacing: 0.08em;
   font-size: 0.7rem;
   padding: 6px 12px;
-  border: 1px solid rgba(243, 232, 216, 0.4);
+  color: #f3e8d8;
+  border: 1px solid rgba(243, 232, 216, 0.5);
   border-radius: 20px;
 }
 
 .menu-page-card-content {
   padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .menu-page-card-title {
@@ -427,6 +453,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-top: auto;
 }
 
 .menu-page-add-btn {
@@ -447,13 +474,14 @@
 
 .menu-page-add-btn:hover:not(:disabled) {
   background: var(--gk-accent);
-  color: var(--gk-ink);
+  color: #fffdf8;
 }
 
 .menu-page-add-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
   border-color: var(--gk-line);
+  color: var(--gk-muted);
 }
 
 .menu-page-qty-btn {
@@ -475,11 +503,11 @@
 
 .menu-page-qty-btn:hover:not(:disabled) {
   background: var(--gk-accent);
-  color: var(--gk-ink);
+  color: #fffdf8;
 }
 
 .menu-page-qty-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -502,7 +530,7 @@
   border: 1px solid var(--gk-line);
   border-radius: 14px;
   padding: 16px 18px;
-  background: rgba(243, 232, 216, 0.03);
+  background: var(--gk-ink-soft);
 }
 
 .menu-page-order-card-top {
@@ -588,7 +616,7 @@
   border: 1px solid var(--gk-line);
   padding: 12px 20px;
   border-radius: 40px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 30px rgba(36, 28, 18, 0.18);
   backdrop-filter: blur(10px);
   cursor: pointer;
   z-index: 50;
@@ -663,7 +691,7 @@
 .menu-page-track-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(23, 19, 15, 0.75);
+  background: rgba(23, 19, 15, 0.6);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -680,6 +708,7 @@
   max-width: 520px;
   width: 100%;
   position: relative;
+  box-shadow: 0 20px 50px rgba(36, 28, 18, 0.2);
 }
 
 .menu-page-track-close {
@@ -729,7 +758,7 @@
   }
 
   .menu-page-grid {
-    columns: 1;
+    grid-template-columns: 1fr;
   }
 
   .menu-page-cart-fab {
