@@ -90,7 +90,20 @@ const getDashboard = async (req, res) => {
           (SELECT COUNT(*) FROM menu) AS total_menu_items
         FROM orders
       `),
-      pool.query("SELECT * FROM orders ORDER BY created_at DESC LIMIT 8"),
+      pool.query(`
+        SELECT
+          id,
+          customer_name,
+          phone_number,
+          location,
+          total_price,
+          payment_method,
+          status,
+          created_at
+        FROM orders
+        ORDER BY id DESC
+        LIMIT 8
+      `),
     ]);
 
     const row = stats.rows[0] || {};

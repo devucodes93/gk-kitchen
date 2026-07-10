@@ -6,7 +6,6 @@ import API from "../api/api";
 import { Navbar } from "../components";
 import DeliveryRouteMap from "../components/DeliveryRouteMap";
 import OrderScreen from "./orderScreen/OrderScreen";
-import { CATEGORY_LABELS, MENU_CATEGORIES } from "../constants/restaurant";
 import { readCartFromStorage, writeCartToStorage } from "../utils/cartStorage";
 
 import "./MenuPage.css";
@@ -169,7 +168,9 @@ const MenuPage = () => {
       try {
         const response = await API.get("/restaurant");
         if (isMounted) {
-          setAcceptingOrders(response.data?.data?.is_accepting_orders !== false);
+          setAcceptingOrders(
+            response.data?.data?.is_accepting_orders !== false,
+          );
         }
       } catch {
         if (isMounted) setAcceptingOrders(true);
@@ -177,11 +178,9 @@ const MenuPage = () => {
     };
 
     fetchRestaurantStatus();
-    const statusIntervalId = setInterval(fetchRestaurantStatus, 30000);
 
     return () => {
       isMounted = false;
-      clearInterval(statusIntervalId);
     };
   }, []);
 
@@ -218,11 +217,9 @@ const MenuPage = () => {
     };
 
     fetchPastOrders();
-    const ordersIntervalId = setInterval(fetchPastOrders, 20000);
 
     return () => {
       isMounted = false;
-      clearInterval(ordersIntervalId);
     };
   }, [pastOrdersLoaded]);
 
@@ -240,20 +237,54 @@ const MenuPage = () => {
     return params.get("category");
   }, [location.search]);
 
-  const groupedMenu = useMemo(
-    () =>
-      MENU_CATEGORIES.map((category) => ({
-        category,
-        label: CATEGORY_LABELS[category] || category,
-        items: menuItems.filter((menuItem) => menuItem.category === category),
-      }))
-        .filter((group) => group.items.length)
-        .filter((group) =>
-          categoryFilter ? group.category === categoryFilter : true,
-        ),
-    [menuItems, categoryFilter],
-  );
+  // Categories listed here show first, in this exact order.
+  // Anything not listed here falls to the bottom, sorted by average price (highest first).
+  const CATEGORY_PRIORITY = [
+    "biryani",
+    "curries", // Main Course
+    "tandoori",
+    "indo-chinese", // Starters
+  ];
 
+  const groupedMenu = useMemo(() => {
+    const categoriesInData = [
+      ...new Set(menuItems.map((item) => item.category)),
+    ];
+
+    const groups = categoriesInData
+      .map((category) => {
+        const items = menuItems.filter(
+          (menuItem) => menuItem.category === category,
+        );
+        const avgPrice =
+          items.reduce((sum, item) => sum + item.price, 0) /
+          (items.length || 1);
+        return {
+          category,
+          label: category
+            .split("-")
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(" "),
+          items,
+          avgPrice,
+        };
+      })
+      .filter((group) => group.items.length);
+
+    return groups.sort((a, b) => {
+      const aIndex = CATEGORY_PRIORITY.indexOf(a.category);
+      const bIndex = CATEGORY_PRIORITY.indexOf(b.category);
+
+      // Both are priority categories → sort by their listed order
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+      // Only a is priority → a comes first
+      if (aIndex !== -1) return -1;
+      // Only b is priority → b comes first
+      if (bIndex !== -1) return 1;
+      // Neither is priority → sort remaining by average price, high to low
+      return b.avgPrice - a.avgPrice;
+    });
+  }, [menuItems]);
   const activeOrder = useMemo(
     () =>
       pastOrders.find(
@@ -266,16 +297,21 @@ const MenuPage = () => {
   const activeOrderMessage = useMemo(() => {
     if (!activeOrder) return "";
     const status = activeOrder.status || "Pending";
-    if (status === "Pending") return "Thanks for ordering. We have received it and will start soon.";
+    if (status === "Pending")
+      return "Thanks for ordering. We have received it and will start soon.";
     if (status === "Preparing") return "Your food is being prepared with care.";
-    if (status === "Ready") return "Your order is ready and waiting for dispatch.";
-    if (status === "Out for Delivery") return "Your order is on the way. Please keep your phone nearby.";
+    if (status === "Ready")
+      return "Your order is ready and waiting for dispatch.";
+    if (status === "Out for Delivery")
+      return "Your order is on the way. Please keep your phone nearby.";
     return "We are taking care of your order.";
   }, [activeOrder]);
 
   useEffect(() => {
     if (!trackingOrder) return;
-    const latestOrder = pastOrders.find((order) => order.id === trackingOrder.id);
+    const latestOrder = pastOrders.find(
+      (order) => order.id === trackingOrder.id,
+    );
     if (latestOrder) setTrackingOrder(latestOrder);
   }, [pastOrders, trackingOrder]);
 
@@ -393,7 +429,10 @@ const MenuPage = () => {
             {!acceptingOrders && (
               <div className="menu-page-offline-banner">
                 <strong>Delivery is currently not available.</strong>
-                <span>Please visit our place, or check back later for online ordering.</span>
+                <span>
+                  Please visit our place, or check back later for online
+                  ordering.
+                </span>
               </div>
             )}
             {menuLoading && (
@@ -427,7 +466,9 @@ const MenuPage = () => {
 
           {activeTab === "orders" ? (
             <section className="menu-page-orders-panel">
-              {pastOrdersLoading && <div className="menu-page-status">Loading past orders...</div>}
+              {pastOrdersLoading && (
+                <div className="menu-page-status">Loading past orders...</div>
+              )}
               {pastOrdersLoaded && !pastOrdersLoading && !pastOrders.length && (
                 <div className="menu-page-status menu-page-status--empty">
                   No past orders yet.
@@ -448,7 +489,8 @@ const MenuPage = () => {
                       <div className="menu-page-order-items">
                         {orderItems.map((orderItem, index) => (
                           <span key={`${orderItem.name}-${index}`}>
-                            {orderItem.quantity || 1} x {orderItem.name || orderItem.menu_name || "Item"}
+                            {orderItem.quantity || 1} x{" "}
+                            {orderItem.name || orderItem.menu_name || "Item"}
                             {orderItem.price ? ` - ₹${orderItem.price}` : ""}
                             {orderItem.item_type === "addon" ? " add-on" : ""}
                           </span>
@@ -456,7 +498,10 @@ const MenuPage = () => {
                       </div>
                       <div className="menu-page-order-footer">
                         <strong>₹{order.total_price}</strong>
-                        <button type="button" onClick={() => repeatOrder(order)}>
+                        <button
+                          type="button"
+                          onClick={() => repeatOrder(order)}
+                        >
                           <FaRedo /> Repeat
                         </button>
                       </div>
@@ -466,118 +511,118 @@ const MenuPage = () => {
               </div>
             </section>
           ) : (
-          <div className="menu-page-sections">
-            {groupedMenu.map((group) => (
-              <section
-                className={`menu-page-category menu-page-category--${group.category}`}
-                key={group.category}
-              >
-                <div className="menu-page-category-inner">
-                  <div className="menu-page-category-header">
-                    <div>
-                      <p className="menu-page-kicker">{group.label}</p>
-                      <h2 className="menu-page-category-title">
-                        {group.label}
-                      </h2>
+            <div className="menu-page-sections">
+              {groupedMenu.map((group) => (
+                <section
+                  className={`menu-page-category menu-page-category--${group.category}`}
+                  key={group.category}
+                >
+                  <div className="menu-page-category-inner">
+                    <div className="menu-page-category-header">
+                      <div>
+                        <p className="menu-page-kicker">{group.label}</p>
+                        <h2 className="menu-page-category-title">
+                          {group.label}
+                        </h2>
+                      </div>
+                      <span className="menu-page-category-count">
+                        {group.items.length} dishes
+                      </span>
                     </div>
-                    <span className="menu-page-category-count">
-                      {group.items.length} dishes
-                    </span>
-                  </div>
 
-                  <div className="menu-page-grid">
-                    {group.items.map((menuItem) => {
-                      const quantity =
-                        cart.find((item) => item.name === menuItem.name)
-                          ?.quantity || 0;
-                      const unavailable = menuItem.available === false;
-                      const orderingDisabled =
-                        unavailable || !acceptingOrders || !isLoggedIn;
+                    <div className="menu-page-grid">
+                      {group.items.map((menuItem) => {
+                        const quantity =
+                          cart.find((item) => item.name === menuItem.name)
+                            ?.quantity || 0;
+                        const unavailable = menuItem.available === false;
+                        const orderingDisabled =
+                          unavailable || !acceptingOrders || !isLoggedIn;
 
-                      return (
-                        <article
-                          className={`menu-page-card ${
-                            unavailable ? "menu-page-card--unavailable" : ""
-                          }`}
-                          key={menuItem.name}
-                        >
-                          <img
-                            className="menu-page-card-img"
-                            src={menuItem.img}
-                            alt={menuItem.name}
-                          />
-                          {unavailable && (
-                            <div className="menu-page-card-overlay">
-                              <span className="menu-page-card-overlay-text">
-                                Not available
-                              </span>
-                            </div>
-                          )}
-                          <div className="menu-page-card-content">
-                            <div className="menu-page-card-top">
-                              <span
-                                className={`menu-page-badge ${menuItem.type}`}
-                              >
-                                {menuItem.type === "veg" ? "Veg" : "Non-Veg"}
-                              </span>
-                              <span className="menu-page-price">
-                                ₹{menuItem.price}
-                              </span>
-                            </div>
-                            <h3 className="menu-page-card-title">
-                              {menuItem.name}
-                            </h3>
-                            <p className="menu-page-card-text">
-                              {menuItem.desc}
-                            </p>
-                            <div className="menu-page-card-actions">
-                              {quantity > 0 ? (
-                                <>
+                        return (
+                          <article
+                            className={`menu-page-card ${
+                              unavailable ? "menu-page-card--unavailable" : ""
+                            }`}
+                            key={menuItem.name}
+                          >
+                            <img
+                              className="menu-page-card-img"
+                              src={menuItem.img}
+                              alt={menuItem.name}
+                            />
+                            {unavailable && (
+                              <div className="menu-page-card-overlay">
+                                <span className="menu-page-card-overlay-text">
+                                  Not available
+                                </span>
+                              </div>
+                            )}
+                            <div className="menu-page-card-content">
+                              <div className="menu-page-card-top">
+                                <span
+                                  className={`menu-page-badge ${menuItem.type}`}
+                                >
+                                  {menuItem.type === "veg" ? "Veg" : "Non-Veg"}
+                                </span>
+                                <span className="menu-page-price">
+                                  ₹{menuItem.price}
+                                </span>
+                              </div>
+                              <h3 className="menu-page-card-title">
+                                {menuItem.name}
+                              </h3>
+                              <p className="menu-page-card-text">
+                                {menuItem.desc}
+                              </p>
+                              <div className="menu-page-card-actions">
+                                {quantity > 0 ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="menu-page-qty-btn"
+                                      onClick={() => decreaseItem(menuItem)}
+                                    >
+                                      −
+                                    </button>
+                                    <span className="menu-page-qty-count">
+                                      {quantity}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="menu-page-qty-btn"
+                                      onClick={() => addItem(menuItem)}
+                                      disabled={orderingDisabled}
+                                    >
+                                      +
+                                    </button>
+                                  </>
+                                ) : (
                                   <button
                                     type="button"
-                                    className="menu-page-qty-btn"
-                                    onClick={() => decreaseItem(menuItem)}
-                                  >
-                                    −
-                                  </button>
-                                  <span className="menu-page-qty-count">
-                                    {quantity}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="menu-page-qty-btn"
+                                    className="menu-page-add-btn"
                                     onClick={() => addItem(menuItem)}
                                     disabled={orderingDisabled}
                                   >
-                                    +
+                                    {!acceptingOrders
+                                      ? "Delivery closed"
+                                      : !isLoggedIn
+                                        ? "Login to order"
+                                        : unavailable
+                                          ? "Unavailable"
+                                          : "Add to cart"}
                                   </button>
-                                </>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="menu-page-add-btn"
-                                  onClick={() => addItem(menuItem)}
-                                  disabled={orderingDisabled}
-                                >
-                                  {!acceptingOrders
-                                    ? "Delivery closed"
-                                    : !isLoggedIn
-                                      ? "Login to order"
-                                    : unavailable
-                                      ? "Unavailable"
-                                      : "Add to cart"}
-                                </button>
-                              )}
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </article>
-                      );
-                    })}
+                          </article>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              </section>
-            ))}
-          </div>
+                </section>
+              ))}
+            </div>
           )}
         </section>
 
@@ -622,7 +667,9 @@ const MenuPage = () => {
         <div className="menu-page-track-bar">
           <div>
             <strong>Order #{activeOrder.id}</strong>
-            <span>{activeOrder.status || "Pending"} · {activeOrderMessage}</span>
+            <span>
+              {activeOrder.status || "Pending"} · {activeOrderMessage}
+            </span>
           </div>
           <button
             type="button"

@@ -1,11 +1,28 @@
 const pool = require("../config/db");
-const { ensureOrderColumns } = require("./orderController");
+const { broadcastOrderEvent } = require("../utils/orderEvents");
 
 const getRiderOrders = async (req, res) => {
   try {
-    await ensureOrderColumns();
     const result = await pool.query(
-      `SELECT *
+      `SELECT
+         id,
+         user_id,
+         customer_name,
+         phone_number,
+         location,
+         items,
+         total_price,
+         payment_method,
+         delivery_lat,
+         delivery_lng,
+         location_label,
+         rider_id,
+         rider_name,
+         order_instructions,
+         order_preferences,
+         status,
+         created_at,
+         updated_at
        FROM orders
        WHERE status != 'Cancelled'
          AND (
@@ -17,7 +34,7 @@ const getRiderOrders = async (req, res) => {
          )
        ORDER BY
          CASE WHEN status = 'Delivered' THEN 1 ELSE 0 END,
-         created_at DESC`,
+         id DESC`,
       [req.user.id],
     );
 
@@ -30,7 +47,6 @@ const getRiderOrders = async (req, res) => {
 
 const pickOrder = async (req, res) => {
   try {
-    await ensureOrderColumns();
     const result = await pool.query(
       `UPDATE orders
        SET rider_id=$1,
@@ -48,6 +64,7 @@ const pickOrder = async (req, res) => {
       return res.status(409).json({ success: false, message: "Order is already picked or unavailable" });
     }
 
+    broadcastOrderEvent("order-picked", result.rows[0]);
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error(error);
@@ -57,7 +74,6 @@ const pickOrder = async (req, res) => {
 
 const markDelivered = async (req, res) => {
   try {
-    await ensureOrderColumns();
     const result = await pool.query(
       `UPDATE orders
        SET status='Delivered', updated_at=CURRENT_TIMESTAMP
@@ -70,6 +86,7 @@ const markDelivered = async (req, res) => {
       return res.status(404).json({ success: false, message: "Picked order not found" });
     }
 
+    broadcastOrderEvent("order-updated", result.rows[0]);
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error(error);

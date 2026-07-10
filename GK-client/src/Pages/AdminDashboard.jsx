@@ -82,6 +82,17 @@ const normalizeMenu = (item = {}) => ({
   is_discounted: item.is_discounted === true,
 });
 
+const upsertNewestOrder = (orders, nextOrder) => {
+  const existing = orders.some((order) => order.id === nextOrder.id);
+  const nextOrders = existing
+    ? orders.map((order) => (order.id === nextOrder.id ? nextOrder : order))
+    : [nextOrder, ...orders];
+
+  return nextOrders.sort(
+    (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0),
+  );
+};
+
 const AdminDashboard = () => {
   const [activeView, setActiveView] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -100,10 +111,6 @@ const AdminDashboard = () => {
     password: "",
   });
   const [busyOrderId, setBusyOrderId] = useState(null);
-  const knownOrderIds = useRef(new Set());
-  const notificationsReady = useRef(false);
-  const livePollBusy = useRef(false);
-  const referencePollBusy = useRef(false);
 
   const [dashboard, setDashboard] = useState({});
   const [menuItems, setMenuItems] = useState([]);
@@ -203,184 +210,143 @@ const AdminDashboard = () => {
       Notification.requestPermission();
     }
   };
+const loadedRef = useRef(new Set());
 
-  const fetchAll = async () => {
+  const setAdminTokenForRequest = () => {
     const adminToken = localStorage.getItem("adminToken");
-    if (!adminToken) {
-      setNeedsAdminLogin(true);
-      setLoading(false);
-      return;
-    }
+    if (adminToken) localStorage.setItem("token", adminToken);
+    return adminToken;
+  };
 
-    localStorage.setItem("token", adminToken);
+  const fetchDashboard = async () => {
+    setAdminTokenForRequest();
+    setDashboard((await API.get("/admin/dashboard")).data?.data || {});
+  };
+  const fetchMenu = async () => {
+    const res = await API.get("/menu");
+    setMenuItems((Array.isArray(res.data) ? res.data : []).map(normalizeMenu));
+  };
+  const fetchOrders = async () => {
+    setAdminTokenForRequest();
+    const list = unwrap(await API.get("/orders"));
+    setOrders(list);
+    return list;
+  };
+  const fetchOffers = async () => {
+    setAdminTokenForRequest();
+    setOffers(unwrap(await API.get("/admin/offers")));
+  };
+  const fetchCustomers = async () => {
+    setAdminTokenForRequest();
+    setCustomers(unwrap(await API.get("/admin/customers")));
+  };
+  const fetchCategories = async () => {
+    setAdminTokenForRequest();
+    setCategories(unwrap(await API.get("/admin/categories")));
+  };
+  const fetchRestaurant = async () => {
+    setAdminTokenForRequest();
+    setRestaurant((await API.get("/admin/restaurant")).data?.data || {});
+  };
+  const fetchMe = async () => {
+    setAdminTokenForRequest();
+    const response = await API.get("/auth/me");
+    setProfile((current) => ({
+      ...current,
+      ...(response.data?.user || {}),
+    }));
+  };
+
+  const VIEW_FETCHERS = {
+    dashboard: [fetchDashboard],
+    menu: [fetchCategories, fetchMenu],
+    orders: [fetchOrders],
+    offers: [fetchOffers],
+    customers: [fetchCustomers],
+    categories: [fetchCategories],
+    settings: [fetchRestaurant],
+    profile: [fetchMe],
+  };
+
+  const loadView = async (view, { force = false } = {}) => {
+    if (!force && loadedRef.current.has(view)) return;
+    setAdminTokenForRequest();
     setLoading(true);
     try {
-      const [
-        statsResult,
-        menuResult,
-        ordersResult,
-        offersResult,
-        customersResult,
-        categoriesResult,
-        restaurantResult,
-        meResult,
-      ] = await Promise.allSettled([
-        API.get("/admin/dashboard"),
-        API.get("/menu"),
-        API.get("/orders"),
-        API.get("/admin/offers"),
-        API.get("/admin/customers"),
-        API.get("/admin/categories"),
-        API.get("/admin/restaurant"),
-        API.get("/auth/me"),
-      ]);
-
-      const authFailure = [
-        statsResult,
-        ordersResult,
-        offersResult,
-        customersResult,
-        categoriesResult,
-        restaurantResult,
-      ].some(
-        (result) =>
-          result.status === "rejected" &&
-          [401, 403].includes(result.reason?.response?.status),
-      );
-
-      if (authFailure) {
-        setNeedsAdminLogin(true);
-        return;
-      }
-
-      if (statsResult.status === "fulfilled") {
-        setDashboard(statsResult.value.data?.data || {});
-      }
-      if (menuResult.status === "fulfilled") {
-        setMenuItems(
-          (Array.isArray(menuResult.value.data) ? menuResult.value.data : []).map(
-            normalizeMenu,
-          ),
-        );
-      }
-      const fetchedOrders =
-        ordersResult.status === "fulfilled" ? unwrap(ordersResult.value) : [];
-      if (ordersResult.status === "fulfilled") setOrders(fetchedOrders);
-      if (!notificationsReady.current) {
-        knownOrderIds.current = new Set(
-          fetchedOrders.map((order) => String(order.id)),
-        );
-        notificationsReady.current = true;
-      }
-      if (offersResult.status === "fulfilled") setOffers(unwrap(offersResult.value));
-      if (customersResult.status === "fulfilled") {
-        setCustomers(unwrap(customersResult.value));
-      }
-      if (categoriesResult.status === "fulfilled") {
-        setCategories(unwrap(categoriesResult.value));
-      }
-      if (restaurantResult.status === "fulfilled") {
-        setRestaurant(restaurantResult.value.data?.data || {});
-      }
-      if (meResult.status === "fulfilled") {
-        setProfile((current) => ({
-          ...current,
-          ...(meResult.value.data?.user || {}),
-        }));
-      }
-      setNeedsAdminLogin(false);
-    } catch (error) {
-      if ([401, 403].includes(error.response?.status)) {
-        setNeedsAdminLogin(true);
-      }
-      showToast(error.response?.data?.message || "Unable to load admin data", "error");
+      for (const fn of VIEW_FETCHERS[view] || []) await fn();
+      loadedRef.current.add(view);
+    } catch (err) {
+      if ([401, 403].includes(err.response?.status)) setNeedsAdminLogin(true);
+      else showToast(err.response?.data?.message || "Unable to load data", "error");
     } finally {
       setLoading(false);
     }
   };
 
+// initial + tab-change load
   useEffect(() => {
-    fetchAll();
-  }, []);
+    if (needsAdminLogin) return;
+    loadView(activeView);
+  }, [activeView, needsAdminLogin]);
 
+// lightweight live-ish updates — only while it matters
   useEffect(() => {
     if (needsAdminLogin) return undefined;
+    const adminToken = localStorage.getItem("adminToken");
+    if (!adminToken) return undefined;
 
-    const pollForUpdates = async () => {
-      if (livePollBusy.current) return;
-      livePollBusy.current = true;
-      try {
-        const adminToken = localStorage.getItem("adminToken");
-        if (!adminToken) return;
-        localStorage.setItem("token", adminToken);
-        const [ordersResponse, statsResponse, restaurantResponse] =
-          await Promise.all([
-            API.get("/orders"),
-            API.get("/admin/dashboard"),
-            API.get("/admin/restaurant"),
-          ]);
-        const latestOrders = unwrap(ordersResponse);
-        const newOrders = latestOrders.filter(
-          (order) => !knownOrderIds.current.has(String(order.id)),
-        );
+    const source = new EventSource(
+      `http://localhost:5000/api/orders/events?token=${encodeURIComponent(adminToken)}`,
+    );
 
-        latestOrders.forEach((order) =>
-          knownOrderIds.current.add(String(order.id)),
-        );
+    const handleOrderEvent = (event) => {
+      const order = JSON.parse(event.data || "{}").order;
+      if (!order) return;
 
-        if (notificationsReady.current && newOrders.length > 0) {
-          notifyNewOrder(newOrders[0]);
+      setOrders((current) => {
+        if (!loadedRef.current.has("orders")) return current;
+        return upsertNewestOrder(current, order);
+      });
+      setDetailOrder((current) => (current?.id === order.id ? order : current));
+
+      if (event.type === "order-created") notifyNewOrder(order);
+      setDashboard((current) => {
+        if (!loadedRef.current.has("dashboard")) return current;
+        const recentOrders = upsertNewestOrder(
+          current.recentOrders || [],
+          order,
+        ).slice(0, 8);
+
+        if (event.type !== "order-created") {
+          return { ...current, recentOrders };
         }
 
-        notificationsReady.current = true;
-        setOrders(latestOrders);
-        setDashboard(statsResponse.data?.data || {});
-        setRestaurant(restaurantResponse.data?.data || {});
-        setDetailOrder((current) =>
-          current
-            ? latestOrders.find((order) => order.id === current.id) || current
-            : current,
-        );
-      } catch {
-        // The main load path already reports API/auth errors.
-      } finally {
-        livePollBusy.current = false;
-      }
+        return {
+          ...current,
+          totalOrders: Number(current.totalOrders || 0) + 1,
+          pendingOrders:
+            (order.status || "Pending") === "Pending"
+              ? Number(current.pendingOrders || 0) + 1
+              : current.pendingOrders || 0,
+          totalRevenue:
+            Number(current.totalRevenue || 0) + Number(order.total_price || 0),
+          todaysRevenue:
+            String(order.created_at || "").slice(0, 10) ===
+            new Date().toISOString().slice(0, 10)
+              ? Number(current.todaysRevenue || 0) +
+                Number(order.total_price || 0)
+              : current.todaysRevenue || 0,
+          recentOrders,
+        };
+      });
     };
 
-    const pollForReferenceData = async () => {
-      if (referencePollBusy.current) return;
-      referencePollBusy.current = true;
-      try {
-        const adminToken = localStorage.getItem("adminToken");
-        if (!adminToken) return;
-        localStorage.setItem("token", adminToken);
-        const [menuRes, offersRes, customersRes, categoriesRes] =
-          await Promise.all([
-            API.get("/menu"),
-            API.get("/admin/offers"),
-            API.get("/admin/customers"),
-            API.get("/admin/categories"),
-          ]);
+    source.addEventListener("order-created", handleOrderEvent);
+    source.addEventListener("order-updated", handleOrderEvent);
+    source.addEventListener("order-picked", handleOrderEvent);
 
-        setMenuItems((Array.isArray(menuRes.data) ? menuRes.data : []).map(normalizeMenu));
-        setOffers(unwrap(offersRes));
-        setCustomers(unwrap(customersRes));
-        setCategories(unwrap(categoriesRes));
-      } catch {
-        // Keep current data during a background sync miss.
-      } finally {
-        referencePollBusy.current = false;
-      }
-    };
-
-    const ordersIntervalId = setInterval(pollForUpdates, 12000);
-    const dataIntervalId = setInterval(pollForReferenceData, 60000);
-    return () => {
-      clearInterval(ordersIntervalId);
-      clearInterval(dataIntervalId);
-    };
-  }, [needsAdminLogin]);
+    return () => source.close();
+  }, [needsAdminLogin, activeView]);
 
   const filteredMenu = useMemo(() => {
     return menuItems.filter((item) => {
@@ -406,6 +372,14 @@ const AdminDashboard = () => {
         return new Date(b.created_at || 0) - new Date(a.created_at || 0);
       });
   }, [orders, orderSearch, orderStatus]);
+
+  useEffect(() => {
+    setOrderPage(1);
+  }, [orderSearch, orderStatus]);
+
+  useEffect(() => {
+    setMenuPage(1);
+  }, [menuSearch, menuCategory]);
 
   const page = (items, currentPage) =>
     items.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -602,9 +576,14 @@ const AdminDashboard = () => {
         ? "Opening online orders..."
         : "Pausing online orders...",
       async () => {
+        let currentRestaurant = restaurant;
+        if (!currentRestaurant.id) {
+          const restaurantResponse = await API.get("/admin/restaurant");
+          currentRestaurant = restaurantResponse.data?.data || {};
+        }
         const response = await API.put("/admin/restaurant", {
-          ...restaurant,
-          is_accepting_orders: restaurant.is_accepting_orders === false,
+          ...currentRestaurant,
+          is_accepting_orders: currentRestaurant.is_accepting_orders === false,
         });
         setRestaurant(response.data.data);
       },
@@ -626,23 +605,23 @@ const AdminDashboard = () => {
     localStorage.removeItem("token");
     setNeedsAdminLogin(true);
   };
-
-  const handleAdminLogin = async (event) => {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const response = await API.post("/auth/admin-login", adminLoginForm);
-      localStorage.setItem("adminToken", response.data.token);
-      localStorage.setItem("token", response.data.token);
-      showToast(response.data.message || "Admin login successful");
-      setNeedsAdminLogin(false);
-      await fetchAll();
-    } catch (error) {
-      showToast(error.response?.data?.message || "Unable to login as admin", "error");
-    } finally {
-      setSaving(false);
-    }
-  };
+const handleAdminLogin = async (event) => {
+  event.preventDefault();
+  setSaving(true);
+  try {
+    const response = await API.post("/auth/admin-login", adminLoginForm);
+    localStorage.setItem("adminToken", response.data.token);
+    localStorage.setItem("token", response.data.token);
+    showToast(response.data.message || "Admin login successful");
+    setNeedsAdminLogin(false);
+    loadedRef.current.clear();       // force a fresh load for the session
+    await loadView("dashboard", { force: true });
+  } catch (error) {
+    showToast(error.response?.data?.message || "Unable to login as admin", "error");
+  } finally {
+    setSaving(false);
+  }
+};
 
   const renderPagination = (total, currentPage, setCurrentPage) => {
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -693,7 +672,7 @@ const AdminDashboard = () => {
           <h2>Recent orders</h2>
           <button type="button" onClick={() => setActiveView("orders")}>View all</button>
         </div>
-        {orders.length ? renderOrdersTable((dashboard.recentOrders || orders.slice(0, 8)), false) : <EmptyState label="No orders yet" />}
+        {dashboard.recentOrders?.length ? renderOrdersTable(dashboard.recentOrders, false) : <EmptyState label="No recent orders yet" />}
       </section>
     </>
   );
@@ -747,7 +726,7 @@ const AdminDashboard = () => {
               </div>
             </article>
           ))}
-          {!filteredMenu.length && <EmptyState label="No menu items found" />}
+          {loadedRef.current.has("menu") && !filteredMenu.length && <EmptyState label="No menu items found" />}
         </div>
         {renderPagination(filteredMenu.length, menuPage, setMenuPage)}
       </section>
@@ -819,7 +798,7 @@ const AdminDashboard = () => {
             </div>
           </article>
         ))}
-        {!offers.length && <EmptyState label="No offers created" />}
+        {loadedRef.current.has("offers") && !offers.length && <EmptyState label="No offers created" />}
       </section>
     </div>
   );
@@ -834,7 +813,7 @@ const AdminDashboard = () => {
             <button type="button" onClick={async () => setCustomerDetail(unwrap(await API.get(`/admin/customers/${customer.id}`)))}>History</button>
           </article>
         ))}
-        {!customers.length && <EmptyState label="No customers found" />}
+        {loadedRef.current.has("customers") && !customers.length && <EmptyState label="No customers found" />}
       </div>
       {renderPagination(customers.length, customerPage, setCustomerPage)}
     </section>
@@ -901,7 +880,7 @@ const AdminDashboard = () => {
   );
 
   const renderActiveView = () => {
-    if (loading) return <LoadingGrid />;
+    if (loading || !loadedRef.current.has(activeView)) return <LoadingGrid />;
     return {
       dashboard: renderDashboard(),
       menu: renderMenu(),
