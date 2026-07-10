@@ -3,6 +3,7 @@ const pool = require("../config/db");
 const ensureMenuColumns = async () => {
   await pool.query(`
     ALTER TABLE menu
+    ADD COLUMN IF NOT EXISTS image_url TEXT,
     ADD COLUMN IF NOT EXISTS description TEXT,
     ADD COLUMN IF NOT EXISTS is_available BOOLEAN DEFAULT TRUE,
     ADD COLUMN IF NOT EXISTS original_price NUMERIC,
@@ -28,6 +29,9 @@ const AddMenu = async (req, res) => {
       is_discounted = false,
     } = req.body;
 
+    // image_url should be a Cloudinary URL provided by the frontend
+    const finalImageUrl = image_url;
+
     const result = await pool.query(
       `INSERT INTO menu
       (menu_type, menu_name, price, category, image_url, description, is_available, original_price, discounted_price, is_discounted)
@@ -38,7 +42,7 @@ const AddMenu = async (req, res) => {
         menu_name,
         price,
         category,
-        image_url,
+        finalImageUrl,
         description,
         is_available,
         original_price || price,
@@ -119,6 +123,9 @@ const updateMenu = async (req, res) => {
       is_discounted = false,
     } = req.body;
 
+    // image_url should be a Cloudinary URL provided by the frontend
+    const finalImageUrl = image_url;
+
     const result = await pool.query(
       `UPDATE menu
        SET
@@ -140,7 +147,7 @@ const updateMenu = async (req, res) => {
         menu_name,
         price,
         category,
-        image_url,
+        finalImageUrl,
         description,
         is_available,
         original_price || price,

@@ -151,8 +151,34 @@ const getDashboard = async (req, res) => {
   try {
     await ensureAdminTables();
 
-    const cached = getDashboardCache();
-    if (cached) return res.json({ success: true, data: cached });
+    const [stats, recentOrders] = await Promise.all([
+      pool.query(`
+        SELECT
+          COALESCE(SUM(total_price), 0) AS total_revenue,
+          COALESCE(SUM(total_price) FILTER (WHERE created_at::date = CURRENT_DATE), 0) AS todays_revenue,
+          COUNT(*) AS total_orders,
+          COUNT(*) FILTER (WHERE COALESCE(status, 'Pending') = 'Pending') AS pending_orders,
+          COUNT(*) FILTER (WHERE COALESCE(status, 'Pending') = 'Delivered') AS completed_orders,
+          COUNT(*) FILTER (WHERE COALESCE(status, 'Pending') = 'Cancelled') AS cancelled_orders,
+          (SELECT COUNT(*) FROM users) AS total_customers,
+          (SELECT COUNT(*) FROM menu) AS total_menu_items
+        FROM orders
+      `),
+      pool.query(`
+        SELECT
+          id,
+          customer_name,
+          phone_number,
+          location,
+          total_price,
+          payment_method,
+          status,
+          created_at
+        FROM orders
+        ORDER BY id DESC
+        LIMIT 8
+      `),
+    ]);
 
     const payload = await buildDashboardPayload();
     setDashboardCache(payload);
@@ -486,6 +512,8 @@ const deleteCategory = async (req, res) => {
 const updateProfile = async (req, res) => {
   try {
     const { name, phone, picture, currentPassword, newPassword } = req.body;
+    // Expect frontend to upload profile images to Cloudinary and provide `picture` as a URL.
+    const finalPicture = picture;
 
     if (newPassword) {
       const user = await runQuery("updateProfile fetch current password", "SELECT password FROM users WHERE id=$1", [req.user.id]);
@@ -503,7 +531,7 @@ const updateProfile = async (req, res) => {
     const result = await runQuery(
       "updateProfile",
       "UPDATE users SET name=$1, phone=$2, picture=$3 WHERE id=$4 RETURNING id, name, email, phone, picture, role",
-      [name || req.user.name, phone || req.user.phone, picture || req.user.picture, req.user.id],
+      [name || req.user.name, phone || req.user.phone, finalPicture || req.user.picture, req.user.id],
     );
 
     res.json({ success: true, data: result.rows[0] });

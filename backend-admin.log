@@ -1,0 +1,45 @@
+◇ injected env (11) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Registered endpoints: []
+🚀 Server running on port 5000
+🚀 PostgreSQL Connected...
+✅ PostgreSQL Database Connected
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:00.703Z [33mACTOR: [39mPulling container image of build KbvsLfvpo6j9kUka8 from registry.
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:00.705Z [33mACTOR: [39mCreating container.
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:00.748Z [33mACTOR: [39mStarting container.
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:00.748Z [33mACTOR: [39mRunning under "LIMITED_PERMISSIONS".
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:01.408Z [32mINFO[39m  System info[90m {"apifyVersion":"3.6.0","apifyClientVersion":"2.22.2","crawleeVersion":"3.16.0","osType":"Linux","nodeVersion":"v24.18.0"}[39m
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:01.526Z [32mINFO[39m  [Status message]: Starting the scraper with 1 direct URL(s)
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:01.599Z [32mINFO[39m [33m CheerioCrawler:[39m Starting the crawler.
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:20.519Z [32mINFO[39m [33m CheerioCrawler:[39m All requests from the queue have been processed, the crawler will shut down.
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:21.017Z [32mINFO[39m [33m CheerioCrawler:[39m Final request statistics:[90m {"requestsFinished":1,"requestsFailed":0,"retryHistogram":[1],"requestAvgFailedDurationMillis":null,"requestAvgFinishedDurationMillis":18922,"requestsFinishedPerMinute":3,"requestsFailedPerMinute":0,"requestTotalDurationMillis":18922,"requestsTotal":1,"crawlerRuntimeMillis":19428}[39m
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:21.017Z [32mINFO[39m [33m CheerioCrawler:[39m Finished! Total 1 requests: 1 succeeded, 0 failed.[90m {"terminal":true}[39m
+[36minstagram-profile-scraper runId:sGQ7ZgJeXb0kj9Ezk -> [39m2026-07-09T13:43:21.018Z [32mINFO[39m  [Status message]: Scraper finished
+Raw Apify item keys: [
+  'inputUrl',             'id',
+  'username',             'url',
+  'fullName',             'biography',
+  'externalUrls',         'followersCount',
+  'followsCount',         'highlightReelCount',
+  'isBusinessAccount',    'joinedRecently',
+  'businessCategoryName', 'private',
+  'verified',             'profilePicUrl',
+  'profilePicUrlHD',      'igtvVideoCount',
+  'relatedProfiles',      'latestIgtvVideos',
+  'postsCount',           'latestPosts',
+  'fbid'
+]
+Sample post keys: [
+  'id',                 'type',
+  'shortCode',          'caption',
+  'hashtags',           'mentions',
+  'url',                'commentsCount',
+  'dimensionsHeight',   'dimensionsWidth',
+  'displayUrl',         'images',
+  'videoUrl',           'alt',
+  'likesCount',         'videoViewCount',
+  'timestamp',          'childPosts',
+  'ownerUsername',      'ownerId',
+  'productType',        'musicInfo',
+  'isCommentsDisabled'
+]

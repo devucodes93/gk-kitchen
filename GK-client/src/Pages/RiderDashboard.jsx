@@ -102,8 +102,19 @@ const RiderDashboard = () => {
     if (needsLogin) return undefined;
 
     fetchOrders();
-    const intervalId = setInterval(() => fetchOrders({ silent: true }), 12000);
-    return () => clearInterval(intervalId);
+    const token = localStorage.getItem("token");
+    if (!token) return undefined;
+
+    const source = new EventSource(
+      `http://localhost:5000/api/orders/events?token=${encodeURIComponent(token)}`,
+    );
+    const refreshOrders = () => fetchOrders({ silent: true });
+
+    source.addEventListener("order-created", refreshOrders);
+    source.addEventListener("order-picked", refreshOrders);
+    source.addEventListener("order-updated", refreshOrders);
+
+    return () => source.close();
   }, [needsLogin]);
 
   const login = async (event) => {

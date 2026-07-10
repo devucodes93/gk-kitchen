@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   FaBars,
   FaBoxOpen,
@@ -84,6 +90,17 @@ const normalizeMenu = (item = {}) => ({
   is_discounted: item.is_discounted === true,
 });
 
+const upsertNewestOrder = (orders, nextOrder) => {
+  const existing = orders.some((order) => order.id === nextOrder.id);
+  const nextOrders = existing
+    ? orders.map((order) => (order.id === nextOrder.id ? nextOrder : order))
+    : [nextOrder, ...orders];
+
+  return nextOrders.sort(
+    (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0),
+  );
+};
+
 const AdminDashboard = () => {
   const [activeView, setActiveView] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -102,11 +119,6 @@ const AdminDashboard = () => {
     password: "",
   });
   const [busyOrderId, setBusyOrderId] = useState(null);
-  const knownOrderIds = useRef(new Set());
-  const notificationsReady = useRef(false);
-  const viewLoadBusyRef = useRef(false);
-  const loadedSectionsRef = useRef(new Set());
-  const initialDataLoadedRef = useRef(false);
 
   const [dashboard, setDashboard] = useState({});
   const [menuItems, setMenuItems] = useState([]);
@@ -166,181 +178,187 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchAll = useCallback(async () => {
-    const adminToken = localStorage.getItem("adminToken");
-    if (!adminToken) {
-      setNeedsAdminLogin(true);
-      setLoading(false);
-      return;
+  const playOrderAlert = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const audioContext = new AudioContext();
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(780, audioContext.currentTime);
+      gain.gain.setValueAtTime(0.001, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(
+        0.18,
+        audioContext.currentTime + 0.02,
+      );
+      gain.gain.exponentialRampToValueAtTime(
+        0.001,
+        audioContext.currentTime + 0.35,
+      );
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.36);
+    } catch {
+      // Some browsers block sound until the page has user interaction.
     }
+  };
 
-    localStorage.setItem("token", adminToken);
+  const notifyNewOrder = (order) => {
+    showToast(`New order #${order.id} from ${order.customer_name || "Guest"}`);
+    playOrderAlert();
+
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted") {
+      new Notification("New restaurant order", {
+        body: `Order #${order.id} - ${currency(order.total_price)}`,
+      });
+    } else if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  };
+  const loadedRef = useRef(new Set());
+
+  const setAdminTokenForRequest = () => {
+    const adminToken = localStorage.getItem("adminToken");
+    if (adminToken) localStorage.setItem("token", adminToken);
+    return adminToken;
+  };
+
+  const fetchDashboard = async () => {
+    setAdminTokenForRequest();
+    setDashboard((await API.get("/admin/dashboard")).data?.data || {});
+  };
+  const fetchMenu = async () => {
+    const res = await API.get("/menu");
+    setMenuItems((Array.isArray(res.data) ? res.data : []).map(normalizeMenu));
+  };
+  const fetchOrders = async () => {
+    setAdminTokenForRequest();
+    const list = unwrap(await API.get("/orders"));
+    setOrders(list);
+    return list;
+  };
+  const fetchOffers = async () => {
+    setAdminTokenForRequest();
+    setOffers(unwrap(await API.get("/admin/offers")));
+  };
+  const fetchCustomers = async () => {
+    setAdminTokenForRequest();
+    setCustomers(unwrap(await API.get("/admin/customers")));
+  };
+  const fetchCategories = async () => {
+    setAdminTokenForRequest();
+    setCategories(unwrap(await API.get("/admin/categories")));
+  };
+  const fetchRestaurant = async () => {
+    setAdminTokenForRequest();
+    setRestaurant((await API.get("/admin/restaurant")).data?.data || {});
+  };
+  const fetchMe = async () => {
+    setAdminTokenForRequest();
+    const response = await API.get("/auth/me");
+    setProfile((current) => ({
+      ...current,
+      ...(response.data?.user || {}),
+    }));
+  };
+
+  const VIEW_FETCHERS = {
+    dashboard: [fetchDashboard],
+    menu: [fetchCategories, fetchMenu],
+    orders: [fetchOrders],
+    offers: [fetchOffers],
+    customers: [fetchCustomers],
+    categories: [fetchCategories],
+    settings: [fetchRestaurant],
+    profile: [fetchMe],
+  };
+
+  const loadView = async (view, { force = false } = {}) => {
+    if (!force && loadedRef.current.has(view)) return;
+    setAdminTokenForRequest();
     setLoading(true);
     try {
-      const bootstrapResponse = await API.get("/admin/bootstrap");
-      const bootstrapData = bootstrapResponse.data?.data || {};
-      setDashboard(bootstrapData.dashboard || {});
-      setMenuItems(
-        (Array.isArray(bootstrapData.menu) ? bootstrapData.menu : []).map(
-          normalizeMenu,
-        ),
-      );
-      const fetchedOrders = Array.isArray(bootstrapData.orders)
-        ? bootstrapData.orders
-        : [];
-      setOrders(fetchedOrders);
-      if (!notificationsReady.current) {
-        knownOrderIds.current = new Set(
-          fetchedOrders.map((order) => String(order.id)),
+      for (const fn of VIEW_FETCHERS[view] || []) await fn();
+      loadedRef.current.add(view);
+    } catch (err) {
+      if ([401, 403].includes(err.response?.status)) setNeedsAdminLogin(true);
+      else
+        showToast(
+          err.response?.data?.message || "Unable to load data",
+          "error",
         );
-        notificationsReady.current = true;
-      }
-      setOffers(Array.isArray(bootstrapData.offers) ? bootstrapData.offers : []);
-      setCustomers(
-        Array.isArray(bootstrapData.customers) ? bootstrapData.customers : [],
-      );
-      setCategories(
-        Array.isArray(bootstrapData.categories) ? bootstrapData.categories : [],
-      );
-      setRestaurant(bootstrapData.restaurant || {});
-
-      loadedSectionsRef.current = new Set([
-        "dashboard",
-        "menu",
-        "orders",
-        "offers",
-        "customers",
-        "categories",
-        "restaurant",
-      ]);
-
-      const meResponse = await API.get("/auth/me");
-      setProfile((current) => ({
-        ...current,
-        ...(meResponse.data?.user || {}),
-      }));
-      loadedSectionsRef.current.add("profile");
-      initialDataLoadedRef.current = true;
-      setNeedsAdminLogin(false);
-    } catch (error) {
-      if ([401, 403].includes(error.response?.status)) {
-        setNeedsAdminLogin(true);
-      }
-      showToast(
-        error.response?.data?.message || "Unable to load admin data",
-        "error",
-      );
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  };
 
+  // initial + tab-change load
   useEffect(() => {
-    document.body.classList.add("admin-route");
-    document.documentElement.classList.add("admin-route");
-
-    return () => {
-      document.body.classList.remove("admin-route");
-      document.documentElement.classList.remove("admin-route");
-    };
-  }, []);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  useEffect(() => {
-    if (needsAdminLogin || !initialDataLoadedRef.current) return undefined;
-
-    const loadActiveViewData = async () => {
-      if (viewLoadBusyRef.current) return;
-      viewLoadBusyRef.current = true;
-      try {
-        const adminToken = localStorage.getItem("adminToken");
-        if (!adminToken) return;
-        localStorage.setItem("token", adminToken);
-
-        const section = activeView;
-
-        if (section === "dashboard") {
-          if (!loadedSectionsRef.current.has("dashboard")) {
-            const dashboardResponse = await API.get("/admin/dashboard");
-            setDashboard(dashboardResponse.data?.data || {});
-            loadedSectionsRef.current.add("dashboard");
-          }
-          if (!loadedSectionsRef.current.has("orders")) {
-            const ordersResponse = await API.get("/orders");
-            const fetchedOrders = unwrap(ordersResponse);
-            setOrders(fetchedOrders);
-            loadedSectionsRef.current.add("orders");
-          }
-          return;
-        }
-
-        if (section === "menu" && !loadedSectionsRef.current.has("menu")) {
-          const menuResponse = await API.get("/menu");
-          setMenuItems(
-            (Array.isArray(menuResponse.data) ? menuResponse.data : []).map(
-              normalizeMenu,
-            ),
-          );
-          loadedSectionsRef.current.add("menu");
-          return;
-        }
-
-        if (section === "orders" && !loadedSectionsRef.current.has("orders")) {
-          const ordersResponse = await API.get("/orders");
-          setOrders(unwrap(ordersResponse));
-          loadedSectionsRef.current.add("orders");
-          return;
-        }
-
-        if (section === "offers" && !loadedSectionsRef.current.has("offers")) {
-          const offersResponse = await API.get("/admin/offers");
-          setOffers(unwrap(offersResponse));
-          loadedSectionsRef.current.add("offers");
-          return;
-        }
-
-        if (section === "customers" && !loadedSectionsRef.current.has("customers")) {
-          const customersResponse = await API.get("/admin/customers");
-          setCustomers(unwrap(customersResponse));
-          loadedSectionsRef.current.add("customers");
-          return;
-        }
-
-        if (section === "categories" && !loadedSectionsRef.current.has("categories")) {
-          const categoriesResponse = await API.get("/admin/categories");
-          setCategories(unwrap(categoriesResponse));
-          loadedSectionsRef.current.add("categories");
-          return;
-        }
-
-        if (section === "settings" && !loadedSectionsRef.current.has("restaurant")) {
-          const restaurantResponse = await API.get("/admin/restaurant");
-          setRestaurant(restaurantResponse.data?.data || {});
-          loadedSectionsRef.current.add("restaurant");
-          return;
-        }
-
-        if (section === "profile" && !loadedSectionsRef.current.has("profile")) {
-          const meResponse = await API.get("/auth/me");
-          setProfile((current) => ({
-            ...current,
-            ...(meResponse.data?.user || {}),
-          }));
-          loadedSectionsRef.current.add("profile");
-        }
-      } catch {
-        // Keep the current UI state intact if a section load fails.
-      } finally {
-        viewLoadBusyRef.current = false;
-      }
-    };
-
-    loadActiveViewData();
-    return undefined;
+    if (needsAdminLogin) return;
+    loadView(activeView);
   }, [activeView, needsAdminLogin]);
+
+  // lightweight live-ish updates — only while it matters
+  useEffect(() => {
+    if (needsAdminLogin) return undefined;
+    const adminToken = localStorage.getItem("adminToken");
+    if (!adminToken) return undefined;
+
+    const source = new EventSource(
+      `http://localhost:5000/api/orders/events?token=${encodeURIComponent(adminToken)}`,
+    );
+
+    const handleOrderEvent = (event) => {
+      const order = JSON.parse(event.data || "{}").order;
+      if (!order) return;
+
+      setOrders((current) => {
+        if (!loadedRef.current.has("orders")) return current;
+        return upsertNewestOrder(current, order);
+      });
+      setDetailOrder((current) => (current?.id === order.id ? order : current));
+
+      if (event.type === "order-created") notifyNewOrder(order);
+      setDashboard((current) => {
+        if (!loadedRef.current.has("dashboard")) return current;
+        const recentOrders = upsertNewestOrder(
+          current.recentOrders || [],
+          order,
+        ).slice(0, 8);
+
+        if (event.type !== "order-created") {
+          return { ...current, recentOrders };
+        }
+
+        return {
+          ...current,
+          totalOrders: Number(current.totalOrders || 0) + 1,
+          pendingOrders:
+            (order.status || "Pending") === "Pending"
+              ? Number(current.pendingOrders || 0) + 1
+              : current.pendingOrders || 0,
+          totalRevenue:
+            Number(current.totalRevenue || 0) + Number(order.total_price || 0),
+          todaysRevenue:
+            String(order.created_at || "").slice(0, 10) ===
+            new Date().toISOString().slice(0, 10)
+              ? Number(current.todaysRevenue || 0) +
+                Number(order.total_price || 0)
+              : current.todaysRevenue || 0,
+          recentOrders,
+        };
+      });
+    };
+
+    source.addEventListener("order-created", handleOrderEvent);
+    source.addEventListener("order-updated", handleOrderEvent);
+    source.addEventListener("order-picked", handleOrderEvent);
+
+    return () => source.close();
+  }, [needsAdminLogin, activeView]);
 
   const filteredMenu = useMemo(() => {
     return menuItems.filter((item) => {
@@ -372,30 +390,113 @@ const AdminDashboard = () => {
       });
   }, [orders, orderSearch, orderStatus]);
 
+  useEffect(() => {
+    setOrderPage(1);
+  }, [orderSearch, orderStatus]);
+
+  useEffect(() => {
+    setMenuPage(1);
+  }, [menuSearch, menuCategory]);
+
   const page = (items, currentPage) =>
     items.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const handleImage = (event, setter) => {
+  const handleImage = async (event, setter) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => setter(reader.result);
-    reader.readAsDataURL(file);
+    const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET;
+
+    // Show preview immediately
+    const preview = URL.createObjectURL(file);
+
+    setter((prev) => ({
+      ...prev,
+      image_url: preview,
+      _imageFile: file,
+    }));
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", uploadPreset);
+
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+
+      const data = await response.json();
+
+      setter((prev) => ({
+        ...prev,
+        image_url: data.secure_url,
+        _imageFile: null,
+      }));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const saveMenu = async (event) => {
     event.preventDefault();
     setSaving(true);
     try {
+      const {
+        menu_type,
+        menu_name,
+        price,
+        category,
+        image_url,
+        description,
+        is_available,
+        original_price,
+        discounted_price,
+        is_discounted,
+        _imageFile,
+      } = menuForm;
+
       const payload = {
-        ...menuForm,
-        price: Number(menuForm.price || 0),
-        original_price: Number(menuForm.original_price || menuForm.price || 0),
-        discounted_price: menuForm.discounted_price
-          ? Number(menuForm.discounted_price)
-          : null,
+        menu_type,
+        menu_name,
+        price: Number(price || 0),
+        category,
+        image_url,
+        description,
+        is_available,
+        original_price: Number(original_price || price || 0),
+        discounted_price: discounted_price ? Number(discounted_price) : null,
+        is_discounted,
       };
+      console.log("Menu Payload:", payload);
+
+      if (_imageFile) {
+        const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME;
+        const uploadPreset = process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET;
+        if (!cloudName || !uploadPreset) {
+          throw new Error(
+            "Cloudinary not configured. Please configure Cloudinary before saving.",
+          );
+        }
+        const formData = new FormData();
+        formData.append("file", _imageFile);
+        formData.append("upload_preset", uploadPreset);
+        setToast({ message: "Uploading image...", type: "loading" });
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+          { method: "POST", body: formData },
+        );
+        const data = await res.json();
+        if (data && (data.secure_url || data.url)) {
+          payload.image_url = data.secure_url || data.url;
+        } else {
+          throw new Error(data?.error?.message || "Upload failed");
+        }
+      }
       setToast({
         message: editingMenuId ? "Saving menu item..." : "Adding menu item...",
         type: "loading",
@@ -630,9 +731,14 @@ const AdminDashboard = () => {
         ? "Opening online orders..."
         : "Pausing online orders...",
       async () => {
+        let currentRestaurant = restaurant;
+        if (!currentRestaurant.id) {
+          const restaurantResponse = await API.get("/admin/restaurant");
+          currentRestaurant = restaurantResponse.data?.data || {};
+        }
         const response = await API.put("/admin/restaurant", {
-          ...restaurant,
-          is_accepting_orders: restaurant.is_accepting_orders === false,
+          ...currentRestaurant,
+          is_accepting_orders: currentRestaurant.is_accepting_orders === false,
         });
         const refreshed = await API.get("/admin/restaurant");
         setRestaurant(refreshed.data?.data || response.data.data);
@@ -659,7 +765,6 @@ const AdminDashboard = () => {
     localStorage.removeItem("token");
     setNeedsAdminLogin(true);
   };
-
   const handleAdminLogin = async (event) => {
     event.preventDefault();
     setSaving(true);
@@ -669,7 +774,8 @@ const AdminDashboard = () => {
       localStorage.setItem("token", response.data.token);
       showToast(response.data.message || "Admin login successful");
       setNeedsAdminLogin(false);
-      await fetchAll();
+      loadedRef.current.clear(); // force a fresh load for the session
+      await loadView("dashboard", { force: true });
     } catch (error) {
       showToast(
         error.response?.data?.message || "Unable to login as admin",
@@ -737,10 +843,10 @@ const AdminDashboard = () => {
             View all
           </button>
         </div>
-        {orders.length ? (
-          renderOrdersTable(dashboard.recentOrders || orders.slice(0, 8), false)
+        {dashboard.recentOrders?.length ? (
+          renderOrdersTable(dashboard.recentOrders, false)
         ) : (
-          <EmptyState label="No orders yet" />
+          <EmptyState label="No recent orders yet" />
         )}
       </section>
     </>
@@ -757,15 +863,7 @@ const AdminDashboard = () => {
             <span>No image</span>
           )}
         </div>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) =>
-            handleImage(e, (url) =>
-              setMenuForm({ ...menuForm, image_url: url }),
-            )
-          }
-        />
+        <input type="file" onChange={(e) => handleImage(e, setMenuForm)} />
         <label>
           Name
           <input
@@ -932,7 +1030,9 @@ const AdminDashboard = () => {
               </div>
             </article>
           ))}
-          {!filteredMenu.length && <EmptyState label="No menu items found" />}
+          {loadedRef.current.has("menu") && !filteredMenu.length && (
+            <EmptyState label="No menu items found" />
+          )}
         </div>
         {renderPagination(filteredMenu.length, menuPage, setMenuPage)}
       </section>
@@ -1105,7 +1205,9 @@ const AdminDashboard = () => {
             </div>
           </article>
         ))}
-        {!offers.length && <EmptyState label="No offers created" />}
+        {loadedRef.current.has("offers") && !offers.length && (
+          <EmptyState label="No offers created" />
+        )}
       </section>
     </div>
   );
@@ -1137,7 +1239,9 @@ const AdminDashboard = () => {
             </button>
           </article>
         ))}
-        {!customers.length && <EmptyState label="No customers found" />}
+        {loadedRef.current.has("customers") && !customers.length && (
+          <EmptyState label="No customers found" />
+        )}
       </div>
       {renderPagination(customers.length, customerPage, setCustomerPage)}
     </section>
@@ -1346,7 +1450,7 @@ const AdminDashboard = () => {
   );
 
   const renderActiveView = () => {
-    if (loading) return <LoadingGrid />;
+    if (loading || !loadedRef.current.has(activeView)) return <LoadingGrid />;
     return {
       dashboard: renderDashboard(),
       menu: renderMenu(),

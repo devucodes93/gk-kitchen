@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { broadcastOrderEvent } = require("../utils/orderEvents");
 
 let orderSchemaReady = false;
 let orderSchemaPromise = null;
@@ -10,7 +11,7 @@ const ensureOrderColumns = async () => {
   if (orderSchemaPromise) return orderSchemaPromise;
 
   orderSchemaPromise = (async () => {
-  await pool.query(`
+    await pool.query(`
     ALTER TABLE orders
     ALTER COLUMN user_id DROP NOT NULL,
     ADD COLUMN IF NOT EXISTS payment_method VARCHAR(80) DEFAULT 'Cash on Delivery',
@@ -23,15 +24,15 @@ const ensureOrderColumns = async () => {
     ADD COLUMN IF NOT EXISTS order_preferences TEXT,
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_orders_user_created
     ON orders (user_id, created_at DESC)
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_orders_status_created
     ON orders (status, created_at DESC)
   `);
-  await pool.query(`
+    await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_orders_rider_status
     ON orders (rider_id, status)
   `);
@@ -48,17 +49,17 @@ const ensureRestaurantAvailability = async () => {
   if (restaurantSchemaPromise) return restaurantSchemaPromise;
 
   restaurantSchemaPromise = (async () => {
-  await pool.query(`
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS restaurant_settings (
       id INTEGER PRIMARY KEY DEFAULT 1,
       is_accepting_orders BOOLEAN DEFAULT TRUE
     )
   `);
-  await pool.query(`
+    await pool.query(`
     ALTER TABLE restaurant_settings
     ADD COLUMN IF NOT EXISTS is_accepting_orders BOOLEAN DEFAULT TRUE
   `);
-  await pool.query(`
+    await pool.query(`
     INSERT INTO restaurant_settings (id)
     VALUES (1)
     ON CONFLICT (id) DO NOTHING
@@ -73,15 +74,14 @@ const ensureRestaurantAvailability = async () => {
 
 const createOrder = async (req, res) => {
   try {
-    await ensureOrderColumns();
-    await ensureRestaurantAvailability();
     const setting = await pool.query(
       "SELECT is_accepting_orders FROM restaurant_settings WHERE id=1",
     );
     if (setting.rows[0]?.is_accepting_orders === false) {
       return res.status(423).json({
         success: false,
-        message: "Delivery is currently unavailable. Please visit our restaurant or try again later.",
+        message:
+          "Delivery is currently unavailable. Please visit our restaurant or try again later.",
       });
     }
     const userId = req.user?.id;
@@ -108,7 +108,8 @@ const createOrder = async (req, res) => {
       instructions = "",
     } = req.body;
 
-    const baseItems = items || cartItems || (req.body.item ? [req.body.item] : []);
+    const baseItems =
+      items || cartItems || (req.body.item ? [req.body.item] : []);
     const addonItems = Array.isArray(addons)
       ? addons.map((addon) => ({
           name: addon.name,
@@ -131,9 +132,13 @@ const createOrder = async (req, res) => {
         ? Number(location.lng)
         : null;
     const totalPrice = total_price || pricing?.total || 0;
-    const customerName = customer_name || userInfo?.name || req.user?.name || "Customer";
+    const customerName =
+      customer_name || userInfo?.name || req.user?.name || "Customer";
     const phoneNumber = phone_number || userInfo?.phone || "";
-    const payment = paymentMethod === "cod" ? "Cash on Delivery" : paymentMethod || "Cash on Delivery";
+    const payment =
+      paymentMethod === "cod"
+        ? "Cash on Delivery"
+        : paymentMethod || "Cash on Delivery";
 
     if (userId && phoneNumber) {
       await pool.query(
@@ -167,6 +172,7 @@ const createOrder = async (req, res) => {
     ];
 
     const result = await pool.query(query, values);
+    broadcastOrderEvent("order-created", result.rows[0]);
 
     res.status(201).json({
       success: true,
@@ -181,12 +187,68 @@ const createOrder = async (req, res) => {
     });
   }
 };
+// controllers/orders.controller.js (or wherever GET /orders lives)
+const getOrdersPing = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      WITH agg AS (
+        SELECT
+          COUNT(*)::int AS count,
+          COUNT(*) FILTER (WHERE COALESCE(status,'Pending')='Pending')::int AS pending_count
+        FROM orders
+      )
+      SELECT o.*, agg.count, agg.pending_count
+      FROM orders o, agg
+      ORDER BY o.id DESC
+      LIMIT 1
+    `);
+    const row = result.rows[0];
+    if (!row)
+      return res.json({
+        success: true,
+        data: { latestId: null, count: 0, pendingCount: 0, latestOrder: null },
+      });
+    const { count, pending_count, ...order } = row;
+    res.json({
+      success: true,
+      data: {
+        latestId: order.id,
+        count,
+        pendingCount: pending_count,
+        latestOrder: order,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Ping failed" });
+  }
+};
 
 const getOrders = async (req, res) => {
   try {
-    await ensureOrderColumns();
     const result = await pool.query(
-      "SELECT * FROM orders ORDER BY created_at DESC LIMIT 200"
+      `SELECT
+        id,
+        user_id,
+        customer_name,
+        phone_number,
+        location,
+        items,
+        total_price,
+        payment_method,
+        delivery_lat,
+        delivery_lng,
+        location_label,
+        rider_id,
+        rider_name,
+        order_instructions,
+        order_preferences,
+        status,
+        created_at,
+        updated_at
+       FROM orders
+       ORDER BY created_at DESC
+       LIMIT 60`,
     );
 
     res.status(200).json({
@@ -203,10 +265,8 @@ const getOrders = async (req, res) => {
   }
 };
 
-
 const getMyOrders = async (req, res) => {
   try {
-    await ensureOrderColumns();
     const userId = req.user.id;
 
     const query = `
@@ -228,7 +288,8 @@ const getMyOrders = async (req, res) => {
         created_at
       FROM orders
       WHERE user_id = $1
-      ORDER BY created_at DESC;
+      ORDER BY id DESC
+      LIMIT 30;
     `;
 
     const result = await pool.query(query, [userId]);
@@ -249,7 +310,6 @@ const getMyOrders = async (req, res) => {
 
 const updateOrderStatus = async (req, res) => {
   try {
-    await ensureOrderColumns();
     const { id } = req.params;
     const { status } = req.body;
     const allowedStatuses = [
@@ -283,6 +343,7 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
+    broadcastOrderEvent("order-updated", result.rows[0]);
     res.json({
       success: true,
       message: "Order status updated successfully",
@@ -302,6 +363,7 @@ module.exports = {
   createOrder,
   getOrders,
   getMyOrders,
+  getOrdersPing,
   updateOrderStatus,
   ensureOrderColumns,
 };
