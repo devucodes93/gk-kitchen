@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { FaHistory, FaRedo, FaShoppingCart, FaUtensils } from "react-icons/fa";
 
@@ -14,6 +14,20 @@ const readCart = (stateCart) => readCartFromStorage(stateCart);
 
 const MENU_CACHE_KEY = "gk-menu-cache";
 const MENU_CACHE_TTL = 1000 * 60 * 15; // 15 minutes
+
+// Banner image — swap for your own restaurant photography whenever you have it.
+const HERO_IMAGE_URL =
+  "https://source.unsplash.com/1800x900/?indian,spices,curry";
+
+// One accent per category — reused on the sidebar dots, active-section glow,
+// and card badges, so the color always means the same thing everywhere.
+const CATEGORY_ACCENTS = {
+  biryani: "var(--gk-saffron)",
+  curries: "var(--gk-brick)",
+  tandoori: "var(--gk-ember)",
+  "indo-chinese": "var(--gk-leaf)",
+};
+const FALLBACK_ACCENT = "var(--gk-muted)";
 
 const readMenuCache = () => {
   try {
@@ -124,6 +138,9 @@ const MenuPage = () => {
     Boolean(localStorage.getItem("token")),
   );
   const [loginNotice, setLoginNotice] = useState("");
+  const [activeCategory, setActiveCategory] = useState(null);
+
+  const sectionRefs = useRef({});
 
   useEffect(() => {
     writeCartToStorage(cart);
@@ -285,6 +302,42 @@ const MenuPage = () => {
       return b.avgPrice - a.avgPrice;
     });
   }, [menuItems]);
+
+  const dishCount = menuItems.length;
+
+  // Scrollspy: highlight the sidebar item for whichever section is currently
+  // most visible, and let clicking a sidebar item scroll smoothly to it.
+  useEffect(() => {
+    if (activeTab !== "menu" || !groupedMenu.length) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (visible[0]) {
+          setActiveCategory(visible[0].target.dataset.category);
+        }
+      },
+      { rootMargin: "-15% 0px -55% 0px", threshold: [0.1, 0.25, 0.5, 0.75] },
+    );
+
+    groupedMenu.forEach((group) => {
+      const node = sectionRefs.current[group.category];
+      if (node) observer.observe(node);
+    });
+
+    return () => observer.disconnect();
+  }, [groupedMenu, activeTab]);
+
+  const scrollToCategory = (category) => {
+    const node = sectionRefs.current[category];
+    if (node) {
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+      setActiveCategory(category);
+    }
+  };
+
   const activeOrder = useMemo(
     () =>
       pastOrders.find(
@@ -398,10 +451,18 @@ const MenuPage = () => {
       <Navbar />
 
       <main className="menu-page-shell">
-        <section className="menu-page-hero">
+        <section
+          className="menu-page-hero"
+          style={{ "--gk-hero-image": `url(${HERO_IMAGE_URL})` }}
+        >
           <div className="menu-page-hero-copy">
-            <p className="menu-page-kicker">OUR MENU</p>
+            <p className="menu-page-kicker">Fresh off the tawa</p>
             <h1 className="menu-page-title">Choose your dishes</h1>
+            {!menuLoading && dishCount > 0 && (
+              <p className="menu-page-hero-meta">
+               From spicy biryanis to sizzling tandoori—made fresh for you.
+              </p>
+            )}
           </div>
         </section>
 
@@ -511,117 +572,156 @@ const MenuPage = () => {
               </div>
             </section>
           ) : (
-            <div className="menu-page-sections">
-              {groupedMenu.map((group) => (
-                <section
-                  className={`menu-page-category menu-page-category--${group.category}`}
-                  key={group.category}
-                >
-                  <div className="menu-page-category-inner">
-                    <div className="menu-page-category-header">
-                      <div>
-                        <p className="menu-page-kicker">{group.label}</p>
-                        <h2 className="menu-page-category-title">
-                          {group.label}
-                        </h2>
+            <div className="menu-page-content-row">
+              <div className="menu-page-sections">
+                {groupedMenu.map((group) => {
+                  const accent =
+                    CATEGORY_ACCENTS[group.category] || FALLBACK_ACCENT;
+                  return (
+                    <section
+                      className={`menu-page-category menu-page-category--${group.category}`}
+                      key={group.category}
+                      id={`gk-section-${group.category}`}
+                      data-category={group.category}
+                      ref={(node) => {
+                        sectionRefs.current[group.category] = node;
+                      }}
+                      style={{ "--gk-accent": accent }}
+                    >
+                      <div className="menu-page-category-header">
+                        <div>
+                          <p className="menu-page-kicker">{group.label}</p>
+                          <h2 className="menu-page-category-title">
+                            {group.label}
+                          </h2>
+                        </div>
+                        <span className="menu-page-category-count">
+                          {group.items.length} dishes
+                        </span>
                       </div>
-                      <span className="menu-page-category-count">
-                        {group.items.length} dishes
-                      </span>
-                    </div>
 
-                    <div className="menu-page-grid">
-                      {group.items.map((menuItem) => {
-                        const quantity =
-                          cart.find((item) => item.name === menuItem.name)
-                            ?.quantity || 0;
-                        const unavailable = menuItem.available === false;
-                        const orderingDisabled =
-                          unavailable || !acceptingOrders || !isLoggedIn;
+                      <div className="menu-page-grid">
+                        {group.items.map((menuItem) => {
+                          const quantity =
+                            cart.find((item) => item.name === menuItem.name)
+                              ?.quantity || 0;
+                          const unavailable = menuItem.available === false;
+                          const orderingDisabled =
+                            unavailable || !acceptingOrders || !isLoggedIn;
 
-                        return (
-                          <article
-                            className={`menu-page-card ${
-                              unavailable ? "menu-page-card--unavailable" : ""
-                            }`}
-                            key={menuItem.name}
-                          >
-                            <img
-                              className="menu-page-card-img"
-                              src={menuItem.img}
-                              alt={menuItem.name}
-                            />
-                            {unavailable && (
-                              <div className="menu-page-card-overlay">
-                                <span className="menu-page-card-overlay-text">
-                                  Not available
-                                </span>
-                              </div>
-                            )}
-                            <div className="menu-page-card-content">
-                              <div className="menu-page-card-top">
+                          return (
+                            <article
+                              className={`menu-page-card ${
+                                unavailable ? "menu-page-card--unavailable" : ""
+                              }`}
+                              key={menuItem.name}
+                              style={{ "--gk-accent": accent }}
+                            >
+                              <div className="menu-page-card-media">
+                                <img
+                                  className="menu-page-card-img"
+                                  src={menuItem.img}
+                                  alt={menuItem.name}
+                                  loading="lazy"
+                                />
                                 <span
-                                  className={`menu-page-badge ${menuItem.type}`}
-                                >
-                                  {menuItem.type === "veg" ? "Veg" : "Non-Veg"}
-                                </span>
-                                <span className="menu-page-price">
+                                  className={`menu-page-badge menu-page-badge--${menuItem.type}`}
+                                  title={
+                                    menuItem.type === "veg" ? "Veg" : "Non-Veg"
+                                  }
+                                />
+                                <span className="menu-page-price-chip">
                                   ₹{menuItem.price}
                                 </span>
-                              </div>
-                              <h3 className="menu-page-card-title">
-                                {menuItem.name}
-                              </h3>
-                              <p className="menu-page-card-text">
-                                {menuItem.desc}
-                              </p>
-                              <div className="menu-page-card-actions">
-                                {quantity > 0 ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="menu-page-qty-btn"
-                                      onClick={() => decreaseItem(menuItem)}
-                                    >
-                                      −
-                                    </button>
-                                    <span className="menu-page-qty-count">
-                                      {quantity}
+                                {unavailable && (
+                                  <div className="menu-page-card-overlay">
+                                    <span className="menu-page-card-overlay-text">
+                                      Not available
                                     </span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="menu-page-card-content">
+                                <h3 className="menu-page-card-title">
+                                  {menuItem.name}
+                                </h3>
+                                <p className="menu-page-card-text">
+                                  {menuItem.desc}
+                                </p>
+                                <div className="menu-page-card-actions">
+                                  {quantity > 0 ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="menu-page-qty-btn"
+                                        onClick={() => decreaseItem(menuItem)}
+                                      >
+                                        −
+                                      </button>
+                                      <span className="menu-page-qty-count">
+                                        {quantity}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="menu-page-qty-btn"
+                                        onClick={() => addItem(menuItem)}
+                                        disabled={orderingDisabled}
+                                      >
+                                        +
+                                      </button>
+                                    </>
+                                  ) : (
                                     <button
                                       type="button"
-                                      className="menu-page-qty-btn"
+                                      className="menu-page-add-btn"
                                       onClick={() => addItem(menuItem)}
                                       disabled={orderingDisabled}
                                     >
-                                      +
+                                      {!acceptingOrders
+                                        ? "Delivery closed"
+                                        : !isLoggedIn
+                                          ? "Login to order"
+                                          : unavailable
+                                            ? "Unavailable"
+                                            : "Add to cart"}
                                     </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="menu-page-add-btn"
-                                    onClick={() => addItem(menuItem)}
-                                    disabled={orderingDisabled}
-                                  >
-                                    {!acceptingOrders
-                                      ? "Delivery closed"
-                                      : !isLoggedIn
-                                        ? "Login to order"
-                                        : unavailable
-                                          ? "Unavailable"
-                                          : "Add to cart"}
-                                  </button>
-                                )}
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </section>
-              ))}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+
+              {groupedMenu.length > 1 && (
+                <nav className="menu-page-sidenav" aria-label="Jump to section">
+                  {groupedMenu.map((group) => {
+                    const accent =
+                      CATEGORY_ACCENTS[group.category] || FALLBACK_ACCENT;
+                    const isActive = activeCategory === group.category;
+                    return (
+                      <button
+                        type="button"
+                        key={group.category}
+                        className={`menu-page-sidenav-item ${
+                          isActive ? "is-active" : ""
+                        }`}
+                        style={{ "--gk-accent": accent }}
+                        onClick={() => scrollToCategory(group.category)}
+                      >
+                        <span className="menu-page-sidenav-tick" />
+                        <span className="menu-page-sidenav-label">
+                          {group.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </nav>
+              )}
             </div>
           )}
         </section>
