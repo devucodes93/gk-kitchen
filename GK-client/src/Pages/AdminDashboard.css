@@ -1,10 +1,22 @@
-.admin-app {
+body.admin-route {
+  padding-top: 0 !important;
+  background: #f5f7fb;
+  overflow-x: hidden;
+}
+
+body.admin-route #root {
   min-height: 100vh;
-  margin-top: -80px;
+}
+
+.admin-app {
+  width: 100%;
+  min-height: 100dvh;
+  margin-top: 0;
   display: flex;
   background: #f5f7fb;
   color: #17202a;
   font-family: Inter, "Open Sans", system-ui, sans-serif;
+  overflow-x: hidden;
 }
 
 .admin-app button,
@@ -15,9 +27,13 @@
 }
 
 .admin-login-screen {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
   align-items: center;
   justify-content: center;
   padding: 24px;
+  box-sizing: border-box;
 }
 
 .admin-login-card {
@@ -68,6 +84,7 @@
   inset: 0 auto 0 0;
   z-index: 20;
   width: 280px;
+  height: 100vh;
   padding: 18px;
   background: #101820;
   color: #f8fafc;
@@ -75,6 +92,8 @@
   flex-direction: column;
   gap: 22px;
   transform: translateX(0);
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .admin-brand {
@@ -127,8 +146,10 @@
 
 .admin-main {
   width: 100%;
+  min-height: 100dvh;
   margin-left: 280px;
   padding: 22px;
+  box-sizing: border-box;
 }
 
 .admin-topbar {
@@ -136,7 +157,7 @@
   top: 0;
   z-index: 10;
   min-height: 76px;
-  margin: -22px -22px 22px;
+  margin: 0 0 22px;
   padding: 14px 22px;
   display: flex;
   align-items: center;
@@ -797,13 +818,13 @@ select.admin-status {
     transition: transform 180ms ease;
   }
 
-  .admin-sidebar--open {
-    transform: translateX(0);
-  }
-
   .admin-main {
     margin-left: 0;
     padding: 14px;
+  }
+
+  .admin-sidebar--open {
+    transform: translateX(0);
   }
 
   .admin-topbar {

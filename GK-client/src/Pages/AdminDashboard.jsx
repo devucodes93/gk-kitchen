@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FaBars,
   FaBoxOpen,
@@ -51,11 +51,13 @@ const emptyOfferForm = {
 };
 
 const currency = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN")}`;
-const dateTime = (value) => (value ? new Date(value).toLocaleString() : "Not available");
+const dateTime = (value) =>
+  value ? new Date(value).toLocaleString() : "Not available";
 const statusClass = (status = "Pending") =>
   `admin-status admin-status--${status.toLowerCase().replaceAll(" ", "-")}`;
 
-const unwrap = (response, key = "data") => response.data?.[key] || response.data || [];
+const unwrap = (response, key = "data") =>
+  response.data?.[key] || response.data || [];
 
 const parseItems = (items) => {
   if (Array.isArray(items)) return items;
@@ -102,8 +104,9 @@ const AdminDashboard = () => {
   const [busyOrderId, setBusyOrderId] = useState(null);
   const knownOrderIds = useRef(new Set());
   const notificationsReady = useRef(false);
-  const livePollBusy = useRef(false);
-  const referencePollBusy = useRef(false);
+  const viewLoadBusyRef = useRef(false);
+  const loadedSectionsRef = useRef(new Set());
+  const initialDataLoadedRef = useRef(false);
 
   const [dashboard, setDashboard] = useState({});
   const [menuItems, setMenuItems] = useState([]);
@@ -146,10 +149,10 @@ const AdminDashboard = () => {
     { id: "profile", label: "Profile", icon: FaUsers },
   ];
 
-  const showToast = (message, type = "success") => {
+  const showToast = useCallback((message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3200);
-  };
+  }, []);
 
   const runAction = async (loadingMessage, action, successMessage) => {
     setToast({ message: loadingMessage, type: "loading" });
@@ -163,48 +166,7 @@ const AdminDashboard = () => {
     }
   };
 
-  const playOrderAlert = () => {
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      const audioContext = new AudioContext();
-      const oscillator = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(780, audioContext.currentTime);
-      gain.gain.setValueAtTime(0.001, audioContext.currentTime);
-      gain.gain.exponentialRampToValueAtTime(
-        0.18,
-        audioContext.currentTime + 0.02,
-      );
-      gain.gain.exponentialRampToValueAtTime(
-        0.001,
-        audioContext.currentTime + 0.35,
-      );
-      oscillator.connect(gain);
-      gain.connect(audioContext.destination);
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.36);
-    } catch {
-      // Some browsers block sound until the page has user interaction.
-    }
-  };
-
-  const notifyNewOrder = (order) => {
-    showToast(`New order #${order.id} from ${order.customer_name || "Guest"}`);
-    playOrderAlert();
-
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "granted") {
-      new Notification("New restaurant order", {
-        body: `Order #${order.id} - ${currency(order.total_price)}`,
-      });
-    } else if (Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  };
-
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     const adminToken = localStorage.getItem("adminToken");
     if (!adminToken) {
       setNeedsAdminLogin(true);
@@ -215,177 +177,178 @@ const AdminDashboard = () => {
     localStorage.setItem("token", adminToken);
     setLoading(true);
     try {
-      const [
-        statsResult,
-        menuResult,
-        ordersResult,
-        offersResult,
-        customersResult,
-        categoriesResult,
-        restaurantResult,
-        meResult,
-      ] = await Promise.allSettled([
-        API.get("/admin/dashboard"),
-        API.get("/menu"),
-        API.get("/orders"),
-        API.get("/admin/offers"),
-        API.get("/admin/customers"),
-        API.get("/admin/categories"),
-        API.get("/admin/restaurant"),
-        API.get("/auth/me"),
-      ]);
-
-      const authFailure = [
-        statsResult,
-        ordersResult,
-        offersResult,
-        customersResult,
-        categoriesResult,
-        restaurantResult,
-      ].some(
-        (result) =>
-          result.status === "rejected" &&
-          [401, 403].includes(result.reason?.response?.status),
+      const bootstrapResponse = await API.get("/admin/bootstrap");
+      const bootstrapData = bootstrapResponse.data?.data || {};
+      setDashboard(bootstrapData.dashboard || {});
+      setMenuItems(
+        (Array.isArray(bootstrapData.menu) ? bootstrapData.menu : []).map(
+          normalizeMenu,
+        ),
       );
-
-      if (authFailure) {
-        setNeedsAdminLogin(true);
-        return;
-      }
-
-      if (statsResult.status === "fulfilled") {
-        setDashboard(statsResult.value.data?.data || {});
-      }
-      if (menuResult.status === "fulfilled") {
-        setMenuItems(
-          (Array.isArray(menuResult.value.data) ? menuResult.value.data : []).map(
-            normalizeMenu,
-          ),
-        );
-      }
-      const fetchedOrders =
-        ordersResult.status === "fulfilled" ? unwrap(ordersResult.value) : [];
-      if (ordersResult.status === "fulfilled") setOrders(fetchedOrders);
+      const fetchedOrders = Array.isArray(bootstrapData.orders)
+        ? bootstrapData.orders
+        : [];
+      setOrders(fetchedOrders);
       if (!notificationsReady.current) {
         knownOrderIds.current = new Set(
           fetchedOrders.map((order) => String(order.id)),
         );
         notificationsReady.current = true;
       }
-      if (offersResult.status === "fulfilled") setOffers(unwrap(offersResult.value));
-      if (customersResult.status === "fulfilled") {
-        setCustomers(unwrap(customersResult.value));
-      }
-      if (categoriesResult.status === "fulfilled") {
-        setCategories(unwrap(categoriesResult.value));
-      }
-      if (restaurantResult.status === "fulfilled") {
-        setRestaurant(restaurantResult.value.data?.data || {});
-      }
-      if (meResult.status === "fulfilled") {
-        setProfile((current) => ({
-          ...current,
-          ...(meResult.value.data?.user || {}),
-        }));
-      }
+      setOffers(Array.isArray(bootstrapData.offers) ? bootstrapData.offers : []);
+      setCustomers(
+        Array.isArray(bootstrapData.customers) ? bootstrapData.customers : [],
+      );
+      setCategories(
+        Array.isArray(bootstrapData.categories) ? bootstrapData.categories : [],
+      );
+      setRestaurant(bootstrapData.restaurant || {});
+
+      loadedSectionsRef.current = new Set([
+        "dashboard",
+        "menu",
+        "orders",
+        "offers",
+        "customers",
+        "categories",
+        "restaurant",
+      ]);
+
+      const meResponse = await API.get("/auth/me");
+      setProfile((current) => ({
+        ...current,
+        ...(meResponse.data?.user || {}),
+      }));
+      loadedSectionsRef.current.add("profile");
+      initialDataLoadedRef.current = true;
       setNeedsAdminLogin(false);
     } catch (error) {
       if ([401, 403].includes(error.response?.status)) {
         setNeedsAdminLogin(true);
       }
-      showToast(error.response?.data?.message || "Unable to load admin data", "error");
+      showToast(
+        error.response?.data?.message || "Unable to load admin data",
+        "error",
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
-    fetchAll();
+    document.body.classList.add("admin-route");
+    document.documentElement.classList.add("admin-route");
+
+    return () => {
+      document.body.classList.remove("admin-route");
+      document.documentElement.classList.remove("admin-route");
+    };
   }, []);
 
   useEffect(() => {
-    if (needsAdminLogin) return undefined;
+    fetchAll();
+  }, [fetchAll]);
 
-    const pollForUpdates = async () => {
-      if (livePollBusy.current) return;
-      livePollBusy.current = true;
+  useEffect(() => {
+    if (needsAdminLogin || !initialDataLoadedRef.current) return undefined;
+
+    const loadActiveViewData = async () => {
+      if (viewLoadBusyRef.current) return;
+      viewLoadBusyRef.current = true;
       try {
         const adminToken = localStorage.getItem("adminToken");
         if (!adminToken) return;
         localStorage.setItem("token", adminToken);
-        const [ordersResponse, statsResponse, restaurantResponse] =
-          await Promise.all([
-            API.get("/orders"),
-            API.get("/admin/dashboard"),
-            API.get("/admin/restaurant"),
-          ]);
-        const latestOrders = unwrap(ordersResponse);
-        const newOrders = latestOrders.filter(
-          (order) => !knownOrderIds.current.has(String(order.id)),
-        );
 
-        latestOrders.forEach((order) =>
-          knownOrderIds.current.add(String(order.id)),
-        );
+        const section = activeView;
 
-        if (notificationsReady.current && newOrders.length > 0) {
-          notifyNewOrder(newOrders[0]);
+        if (section === "dashboard") {
+          if (!loadedSectionsRef.current.has("dashboard")) {
+            const dashboardResponse = await API.get("/admin/dashboard");
+            setDashboard(dashboardResponse.data?.data || {});
+            loadedSectionsRef.current.add("dashboard");
+          }
+          if (!loadedSectionsRef.current.has("orders")) {
+            const ordersResponse = await API.get("/orders");
+            const fetchedOrders = unwrap(ordersResponse);
+            setOrders(fetchedOrders);
+            loadedSectionsRef.current.add("orders");
+          }
+          return;
         }
 
-        notificationsReady.current = true;
-        setOrders(latestOrders);
-        setDashboard(statsResponse.data?.data || {});
-        setRestaurant(restaurantResponse.data?.data || {});
-        setDetailOrder((current) =>
-          current
-            ? latestOrders.find((order) => order.id === current.id) || current
-            : current,
-        );
+        if (section === "menu" && !loadedSectionsRef.current.has("menu")) {
+          const menuResponse = await API.get("/menu");
+          setMenuItems(
+            (Array.isArray(menuResponse.data) ? menuResponse.data : []).map(
+              normalizeMenu,
+            ),
+          );
+          loadedSectionsRef.current.add("menu");
+          return;
+        }
+
+        if (section === "orders" && !loadedSectionsRef.current.has("orders")) {
+          const ordersResponse = await API.get("/orders");
+          setOrders(unwrap(ordersResponse));
+          loadedSectionsRef.current.add("orders");
+          return;
+        }
+
+        if (section === "offers" && !loadedSectionsRef.current.has("offers")) {
+          const offersResponse = await API.get("/admin/offers");
+          setOffers(unwrap(offersResponse));
+          loadedSectionsRef.current.add("offers");
+          return;
+        }
+
+        if (section === "customers" && !loadedSectionsRef.current.has("customers")) {
+          const customersResponse = await API.get("/admin/customers");
+          setCustomers(unwrap(customersResponse));
+          loadedSectionsRef.current.add("customers");
+          return;
+        }
+
+        if (section === "categories" && !loadedSectionsRef.current.has("categories")) {
+          const categoriesResponse = await API.get("/admin/categories");
+          setCategories(unwrap(categoriesResponse));
+          loadedSectionsRef.current.add("categories");
+          return;
+        }
+
+        if (section === "settings" && !loadedSectionsRef.current.has("restaurant")) {
+          const restaurantResponse = await API.get("/admin/restaurant");
+          setRestaurant(restaurantResponse.data?.data || {});
+          loadedSectionsRef.current.add("restaurant");
+          return;
+        }
+
+        if (section === "profile" && !loadedSectionsRef.current.has("profile")) {
+          const meResponse = await API.get("/auth/me");
+          setProfile((current) => ({
+            ...current,
+            ...(meResponse.data?.user || {}),
+          }));
+          loadedSectionsRef.current.add("profile");
+        }
       } catch {
-        // The main load path already reports API/auth errors.
+        // Keep the current UI state intact if a section load fails.
       } finally {
-        livePollBusy.current = false;
+        viewLoadBusyRef.current = false;
       }
     };
 
-    const pollForReferenceData = async () => {
-      if (referencePollBusy.current) return;
-      referencePollBusy.current = true;
-      try {
-        const adminToken = localStorage.getItem("adminToken");
-        if (!adminToken) return;
-        localStorage.setItem("token", adminToken);
-        const [menuRes, offersRes, customersRes, categoriesRes] =
-          await Promise.all([
-            API.get("/menu"),
-            API.get("/admin/offers"),
-            API.get("/admin/customers"),
-            API.get("/admin/categories"),
-          ]);
-
-        setMenuItems((Array.isArray(menuRes.data) ? menuRes.data : []).map(normalizeMenu));
-        setOffers(unwrap(offersRes));
-        setCustomers(unwrap(customersRes));
-        setCategories(unwrap(categoriesRes));
-      } catch {
-        // Keep current data during a background sync miss.
-      } finally {
-        referencePollBusy.current = false;
-      }
-    };
-
-    const ordersIntervalId = setInterval(pollForUpdates, 12000);
-    const dataIntervalId = setInterval(pollForReferenceData, 60000);
-    return () => {
-      clearInterval(ordersIntervalId);
-      clearInterval(dataIntervalId);
-    };
-  }, [needsAdminLogin]);
+    loadActiveViewData();
+    return undefined;
+  }, [activeView, needsAdminLogin]);
 
   const filteredMenu = useMemo(() => {
     return menuItems.filter((item) => {
-      const matchesSearch = item.menu_name.toLowerCase().includes(menuSearch.toLowerCase());
-      const matchesCategory = menuCategory === "all" || item.category === menuCategory;
+      const matchesSearch = item.menu_name
+        .toLowerCase()
+        .includes(menuSearch.toLowerCase());
+      const matchesCategory =
+        menuCategory === "all" || item.category === menuCategory;
       return matchesSearch && matchesCategory;
     });
   }, [menuItems, menuSearch, menuCategory]);
@@ -393,10 +356,12 @@ const AdminDashboard = () => {
   const filteredOrders = useMemo(() => {
     return orders
       .filter((order) => {
-        const haystack = `${order.id} ${order.customer_name || ""}`.toLowerCase();
+        const haystack =
+          `${order.id} ${order.customer_name || ""}`.toLowerCase();
         const matchesSearch = haystack.includes(orderSearch.toLowerCase());
         const currentStatus = order.status || "Pending";
-        const matchesStatus = orderStatus === "all" || currentStatus === orderStatus;
+        const matchesStatus =
+          orderStatus === "all" || currentStatus === orderStatus;
         return matchesSearch && matchesStatus;
       })
       .sort((a, b) => {
@@ -427,26 +392,39 @@ const AdminDashboard = () => {
         ...menuForm,
         price: Number(menuForm.price || 0),
         original_price: Number(menuForm.original_price || menuForm.price || 0),
-        discounted_price: menuForm.discounted_price ? Number(menuForm.discounted_price) : null,
+        discounted_price: menuForm.discounted_price
+          ? Number(menuForm.discounted_price)
+          : null,
       };
-      setToast({ message: editingMenuId ? "Saving menu item..." : "Adding menu item...", type: "loading" });
+      setToast({
+        message: editingMenuId ? "Saving menu item..." : "Adding menu item...",
+        type: "loading",
+      });
       if (editingMenuId) {
         const response = await API.put(`/menu/${editingMenuId}`, payload);
         setMenuItems((current) =>
           current.map((item) =>
-            item.menu_id === editingMenuId ? normalizeMenu(response.data.data) : item,
+            item.menu_id === editingMenuId
+              ? normalizeMenu(response.data.data)
+              : item,
           ),
         );
         showToast("Menu item updated");
       } else {
         const response = await API.post("/menu", payload);
-        setMenuItems((current) => [normalizeMenu(response.data.data), ...current]);
+        setMenuItems((current) => [
+          normalizeMenu(response.data.data),
+          ...current,
+        ]);
         showToast("Menu item added");
       }
       setMenuForm(emptyMenuForm);
       setEditingMenuId(null);
     } catch (error) {
-      showToast(error.response?.data?.message || "Unable to save menu item", "error");
+      showToast(
+        error.response?.data?.message || "Unable to save menu item",
+        "error",
+      );
     } finally {
       setSaving(false);
     }
@@ -463,32 +441,44 @@ const AdminDashboard = () => {
       title: "Delete menu item?",
       message: "This removes the item from the customer menu.",
       onConfirm: async () => {
-        await runAction("Deleting menu item...", async () => {
-          await API.delete(`/menu/${id}`);
-          setMenuItems((current) => current.filter((item) => item.menu_id !== id));
-        }, "Menu item deleted");
+        await runAction(
+          "Deleting menu item...",
+          async () => {
+            await API.delete(`/menu/${id}`);
+            setMenuItems((current) =>
+              current.filter((item) => item.menu_id !== id),
+            );
+          },
+          "Menu item deleted",
+        );
       },
     });
 
   const updateMenuStatus = async (item) => {
-    await runAction("Updating availability...", async () => {
-      const response = await API.patch(`/menu/${item.menu_id}/status`, {
-        is_available: !item.is_available,
-      });
-      setMenuItems((current) =>
-        current.map((menuItem) =>
-          menuItem.menu_id === item.menu_id
-            ? normalizeMenu(response.data.data)
-            : menuItem,
-        ),
-      );
-    }, "Availability updated");
+    await runAction(
+      "Updating availability...",
+      async () => {
+        const response = await API.patch(`/menu/${item.menu_id}/status`, {
+          is_available: !item.is_available,
+        });
+        setMenuItems((current) =>
+          current.map((menuItem) =>
+            menuItem.menu_id === item.menu_id
+              ? normalizeMenu(response.data.data)
+              : menuItem,
+          ),
+        );
+      },
+      "Availability updated",
+    );
   };
 
   const updateOrderStatus = async (order, status) => {
     const applyStatus = async () => {
       setBusyOrderId(order.id);
-      const response = await API.patch(`/orders/${order.id}/status`, { status });
+      const response = await API.patch(`/orders/${order.id}/status`, {
+        status,
+      });
       setOrders((current) =>
         current.map((existingOrder) =>
           existingOrder.id === order.id ? response.data.data : existingOrder,
@@ -507,7 +497,11 @@ const AdminDashboard = () => {
         message: "The order status will be changed to Cancelled.",
         onConfirm: async () => {
           try {
-            await runAction("Cancelling order...", applyStatus, "Order cancelled");
+            await runAction(
+              "Cancelling order...",
+              applyStatus,
+              "Order cancelled",
+            );
           } finally {
             setBusyOrderId(null);
           }
@@ -517,7 +511,11 @@ const AdminDashboard = () => {
     }
 
     try {
-      await runAction("Updating order status...", applyStatus, "Order status updated");
+      await runAction(
+        "Updating order status...",
+        applyStatus,
+        "Order status updated",
+      );
     } finally {
       setBusyOrderId(null);
     }
@@ -531,9 +529,14 @@ const AdminDashboard = () => {
     };
     setToast({ message: "Saving offer...", type: "loading" });
     if (editingOfferId) {
-      const response = await API.put(`/admin/offers/${editingOfferId}`, payload);
+      const response = await API.put(
+        `/admin/offers/${editingOfferId}`,
+        payload,
+      );
       setOffers((current) =>
-        current.map((offer) => (offer.id === editingOfferId ? response.data.data : offer)),
+        current.map((offer) =>
+          offer.id === editingOfferId ? response.data.data : offer,
+        ),
       );
       showToast("Offer updated");
     } else {
@@ -550,10 +553,14 @@ const AdminDashboard = () => {
       title: "Delete offer?",
       message: "This offer will no longer be available.",
       onConfirm: async () => {
-        await runAction("Deleting offer...", async () => {
-          await API.delete(`/admin/offers/${id}`);
-          setOffers((current) => current.filter((offer) => offer.id !== id));
-        }, "Offer deleted");
+        await runAction(
+          "Deleting offer...",
+          async () => {
+            await API.delete(`/admin/offers/${id}`);
+            setOffers((current) => current.filter((offer) => offer.id !== id));
+          },
+          "Offer deleted",
+        );
       },
     });
 
@@ -562,14 +569,24 @@ const AdminDashboard = () => {
     if (!categoryForm.trim()) return;
     setToast({ message: "Saving category...", type: "loading" });
     if (editingCategoryId) {
-      const response = await API.put(`/admin/categories/${editingCategoryId}`, { name: categoryForm.trim() });
+      const response = await API.put(`/admin/categories/${editingCategoryId}`, {
+        name: categoryForm.trim(),
+      });
       setCategories((current) =>
-        current.map((category) => category.id === editingCategoryId ? response.data.data : category),
+        current.map((category) =>
+          category.id === editingCategoryId ? response.data.data : category,
+        ),
       );
       showToast("Category updated");
     } else {
-      const response = await API.post("/admin/categories", { name: categoryForm.trim() });
-      setCategories((current) => [...current, response.data.data].sort((a, b) => a.name.localeCompare(b.name)));
+      const response = await API.post("/admin/categories", {
+        name: categoryForm.trim(),
+      });
+      setCategories((current) =>
+        [...current, response.data.data].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        ),
+      );
       showToast("Category created");
     }
     setCategoryForm("");
@@ -581,19 +598,30 @@ const AdminDashboard = () => {
       title: "Delete category?",
       message: "Menu items will keep their current category text.",
       onConfirm: async () => {
-        await runAction("Deleting category...", async () => {
-          await API.delete(`/admin/categories/${id}`);
-          setCategories((current) => current.filter((category) => category.id !== id));
-        }, "Category deleted");
+        await runAction(
+          "Deleting category...",
+          async () => {
+            await API.delete(`/admin/categories/${id}`);
+            setCategories((current) =>
+              current.filter((category) => category.id !== id),
+            );
+          },
+          "Category deleted",
+        );
       },
     });
 
   const saveRestaurant = async (event) => {
     event.preventDefault();
-    await runAction("Saving restaurant settings...", async () => {
-      const response = await API.put("/admin/restaurant", restaurant);
-      setRestaurant(response.data.data);
-    }, "Restaurant settings updated");
+    await runAction(
+      "Saving restaurant settings...",
+      async () => {
+        const response = await API.put("/admin/restaurant", restaurant);
+        const refreshed = await API.get("/admin/restaurant");
+        setRestaurant(refreshed.data?.data || response.data.data);
+      },
+      "Restaurant settings updated",
+    );
   };
 
   const toggleOrdering = async () => {
@@ -606,7 +634,8 @@ const AdminDashboard = () => {
           ...restaurant,
           is_accepting_orders: restaurant.is_accepting_orders === false,
         });
-        setRestaurant(response.data.data);
+        const refreshed = await API.get("/admin/restaurant");
+        setRestaurant(refreshed.data?.data || response.data.data);
       },
       restaurant.is_accepting_orders === false
         ? "Online ordering is open"
@@ -618,7 +647,11 @@ const AdminDashboard = () => {
     event.preventDefault();
     await API.patch("/admin/profile", profile);
     showToast("Profile updated");
-    setProfile((current) => ({ ...current, currentPassword: "", newPassword: "" }));
+    setProfile((current) => ({
+      ...current,
+      currentPassword: "",
+      newPassword: "",
+    }));
   };
 
   const logout = () => {
@@ -638,7 +671,10 @@ const AdminDashboard = () => {
       setNeedsAdminLogin(false);
       await fetchAll();
     } catch (error) {
-      showToast(error.response?.data?.message || "Unable to login as admin", "error");
+      showToast(
+        error.response?.data?.message || "Unable to login as admin",
+        "error",
+      );
     } finally {
       setSaving(false);
     }
@@ -648,7 +684,11 @@ const AdminDashboard = () => {
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     return (
       <div className="admin-pagination">
-        <button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage(currentPage - 1)}>
+        <button
+          type="button"
+          disabled={currentPage === 1}
+          onClick={() => setCurrentPage(currentPage - 1)}
+        >
           Previous
         </button>
         <span>
@@ -681,7 +721,9 @@ const AdminDashboard = () => {
       <section className="admin-stats-grid">
         {statCards.map(([label, value, Icon]) => (
           <article className="admin-stat-card" key={label}>
-            <span className="admin-icon-box"><Icon /></span>
+            <span className="admin-icon-box">
+              <Icon />
+            </span>
             <p>{label}</p>
             <strong>{value}</strong>
           </article>
@@ -691,9 +733,15 @@ const AdminDashboard = () => {
       <section className="admin-panel">
         <div className="admin-panel-header">
           <h2>Recent orders</h2>
-          <button type="button" onClick={() => setActiveView("orders")}>View all</button>
+          <button type="button" onClick={() => setActiveView("orders")}>
+            View all
+          </button>
         </div>
-        {orders.length ? renderOrdersTable((dashboard.recentOrders || orders.slice(0, 8)), false) : <EmptyState label="No orders yet" />}
+        {orders.length ? (
+          renderOrdersTable(dashboard.recentOrders || orders.slice(0, 8), false)
+        ) : (
+          <EmptyState label="No orders yet" />
+        )}
       </section>
     </>
   );
@@ -703,47 +751,184 @@ const AdminDashboard = () => {
       <form className="admin-panel admin-form" onSubmit={saveMenu}>
         <h2>{editingMenuId ? "Edit menu item" : "Add menu item"}</h2>
         <div className="admin-image-preview">
-          {menuForm.image_url ? <img src={menuForm.image_url} alt="Menu preview" /> : <span>No image</span>}
+          {menuForm.image_url ? (
+            <img src={menuForm.image_url} alt="Menu preview" />
+          ) : (
+            <span>No image</span>
+          )}
         </div>
-        <input type="file" accept="image/*" onChange={(e) => handleImage(e, (url) => setMenuForm({ ...menuForm, image_url: url }))} />
-        <label>Name<input value={menuForm.menu_name} onChange={(e) => setMenuForm({ ...menuForm, menu_name: e.target.value })} required /></label>
-        <label>Category<input list="category-options" value={menuForm.category} onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })} required /></label>
-        <datalist id="category-options">{categories.map((category) => <option value={category.name} key={category.id} />)}</datalist>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) =>
+            handleImage(e, (url) =>
+              setMenuForm({ ...menuForm, image_url: url }),
+            )
+          }
+        />
+        <label>
+          Name
+          <input
+            value={menuForm.menu_name}
+            onChange={(e) =>
+              setMenuForm({ ...menuForm, menu_name: e.target.value })
+            }
+            required
+          />
+        </label>
+        <label>
+          Category
+          <input
+            list="category-options"
+            value={menuForm.category}
+            onChange={(e) =>
+              setMenuForm({ ...menuForm, category: e.target.value })
+            }
+            required
+          />
+        </label>
+        <datalist id="category-options">
+          {categories.map((category) => (
+            <option value={category.name} key={category.id} />
+          ))}
+        </datalist>
         <div className="admin-form-grid">
-          <label>Type<select value={menuForm.menu_type} onChange={(e) => setMenuForm({ ...menuForm, menu_type: e.target.value })}><option>Veg</option><option>NonVeg</option></select></label>
-          <label>Price<input type="number" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} required /></label>
+          <label>
+            Type
+            <select
+              value={menuForm.menu_type}
+              onChange={(e) =>
+                setMenuForm({ ...menuForm, menu_type: e.target.value })
+              }
+            >
+              <option>Veg</option>
+              <option>NonVeg</option>
+            </select>
+          </label>
+          <label>
+            Price
+            <input
+              type="number"
+              value={menuForm.price}
+              onChange={(e) =>
+                setMenuForm({ ...menuForm, price: e.target.value })
+              }
+              required
+            />
+          </label>
         </div>
         <div className="admin-form-grid">
-          <label>Original price<input type="number" value={menuForm.original_price} onChange={(e) => setMenuForm({ ...menuForm, original_price: e.target.value })} /></label>
-          <label>Discounted price<input type="number" value={menuForm.discounted_price} onChange={(e) => setMenuForm({ ...menuForm, discounted_price: e.target.value })} /></label>
+          <label>
+            Original price
+            <input
+              type="number"
+              value={menuForm.original_price}
+              onChange={(e) =>
+                setMenuForm({ ...menuForm, original_price: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            Discounted price
+            <input
+              type="number"
+              value={menuForm.discounted_price}
+              onChange={(e) =>
+                setMenuForm({ ...menuForm, discounted_price: e.target.value })
+              }
+            />
+          </label>
         </div>
-        <label>Description<textarea rows="4" value={menuForm.description} onChange={(e) => setMenuForm({ ...menuForm, description: e.target.value })} /></label>
-        <label className="admin-check"><input type="checkbox" checked={menuForm.is_available} onChange={(e) => setMenuForm({ ...menuForm, is_available: e.target.checked })} /> Available</label>
-        <label className="admin-check"><input type="checkbox" checked={menuForm.is_discounted} onChange={(e) => setMenuForm({ ...menuForm, is_discounted: e.target.checked })} /> Discounted</label>
-        <button className="admin-primary" type="submit" disabled={saving}><FaPlus /> {editingMenuId ? "Save item" : "Add item"}</button>
+        <label>
+          Description
+          <textarea
+            rows="4"
+            value={menuForm.description}
+            onChange={(e) =>
+              setMenuForm({ ...menuForm, description: e.target.value })
+            }
+          />
+        </label>
+        <label className="admin-check">
+          <input
+            type="checkbox"
+            checked={menuForm.is_available}
+            onChange={(e) =>
+              setMenuForm({ ...menuForm, is_available: e.target.checked })
+            }
+          />{" "}
+          Available
+        </label>
+        <label className="admin-check">
+          <input
+            type="checkbox"
+            checked={menuForm.is_discounted}
+            onChange={(e) =>
+              setMenuForm({ ...menuForm, is_discounted: e.target.checked })
+            }
+          />{" "}
+          Discounted
+        </label>
+        <button className="admin-primary" type="submit" disabled={saving}>
+          <FaPlus /> {editingMenuId ? "Save item" : "Add item"}
+        </button>
       </form>
 
       <section className="admin-panel">
-        <Toolbar search={menuSearch} setSearch={setMenuSearch} placeholder="Search menu items" />
-        <select className="admin-filter" value={menuCategory} onChange={(e) => setMenuCategory(e.target.value)}>
+        <Toolbar
+          search={menuSearch}
+          setSearch={setMenuSearch}
+          placeholder="Search menu items"
+        />
+        <select
+          className="admin-filter"
+          value={menuCategory}
+          onChange={(e) => setMenuCategory(e.target.value)}
+        >
           <option value="all">All categories</option>
-          {Array.from(new Set([...categories.map((c) => c.name), ...menuItems.map((m) => m.category).filter(Boolean)])).map((category) => (
-            <option value={category} key={category}>{category}</option>
+          {Array.from(
+            new Set([
+              ...categories.map((c) => c.name),
+              ...menuItems.map((m) => m.category).filter(Boolean),
+            ]),
+          ).map((category) => (
+            <option value={category} key={category}>
+              {category}
+            </option>
           ))}
         </select>
         <div className="admin-menu-list">
           {page(filteredMenu, menuPage).map((item) => (
             <article className="admin-menu-item" key={item.menu_id}>
-              <img src={item.image_url || "https://placehold.co/120x90?text=Menu"} alt={item.menu_name} />
+              <img
+                src={item.image_url || "https://placehold.co/120x90?text=Menu"}
+                alt={item.menu_name}
+              />
               <div>
                 <h3>{item.menu_name}</h3>
-                <p>{item.category || "Uncategorized"} · {item.menu_type}</p>
+                <p>
+                  {item.category || "Uncategorized"} · {item.menu_type}
+                </p>
                 <strong>{currency(item.price)}</strong>
               </div>
               <div className="admin-row-actions">
-                <button type="button" onClick={() => updateMenuStatus(item)}>{item.is_available ? "In stock" : "Out"}</button>
-                <button type="button" aria-label="Edit" onClick={() => editMenu(item)}><FaEdit /></button>
-                <button type="button" aria-label="Delete" onClick={() => deleteMenu(item.menu_id)}><FaTrash /></button>
+                <button type="button" onClick={() => updateMenuStatus(item)}>
+                  {item.is_available ? "In stock" : "Out"}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Edit"
+                  onClick={() => editMenu(item)}
+                >
+                  <FaEdit />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete"
+                  onClick={() => deleteMenu(item.menu_id)}
+                >
+                  <FaTrash />
+                </button>
               </div>
             </article>
           ))}
@@ -757,7 +942,16 @@ const AdminDashboard = () => {
   const renderOrdersTable = (items, showControls = true) => (
     <div className="admin-table-wrap">
       <table className="admin-table">
-        <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Date</th><th /></tr></thead>
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th />
+          </tr>
+        </thead>
         <tbody>
           {items.map((order) => (
             <tr key={order.id}>
@@ -766,15 +960,28 @@ const AdminDashboard = () => {
               <td>{currency(order.total_price)}</td>
               <td>
                 {showControls ? (
-                  <select className={statusClass(order.status)} value={order.status || "Pending"} onChange={(e) => updateOrderStatus(order, e.target.value)} disabled={busyOrderId === order.id}>
-                    {ORDER_STATUSES.map((status) => <option key={status}>{status}</option>)}
+                  <select
+                    className={statusClass(order.status)}
+                    value={order.status || "Pending"}
+                    onChange={(e) => updateOrderStatus(order, e.target.value)}
+                    disabled={busyOrderId === order.id}
+                  >
+                    {ORDER_STATUSES.map((status) => (
+                      <option key={status}>{status}</option>
+                    ))}
                   </select>
                 ) : (
-                  <span className={statusClass(order.status)}>{order.status || "Pending"}</span>
+                  <span className={statusClass(order.status)}>
+                    {order.status || "Pending"}
+                  </span>
                 )}
               </td>
               <td>{dateTime(order.created_at)}</td>
-              <td><button type="button" onClick={() => setDetailOrder(order)}>Details</button></td>
+              <td>
+                <button type="button" onClick={() => setDetailOrder(order)}>
+                  Details
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -785,13 +992,26 @@ const AdminDashboard = () => {
   const renderOrders = () => (
     <section className="admin-panel">
       <div className="admin-tools">
-        <Toolbar search={orderSearch} setSearch={setOrderSearch} placeholder="Search by order ID or customer" />
-        <select value={orderStatus} onChange={(e) => setOrderStatus(e.target.value)}>
+        <Toolbar
+          search={orderSearch}
+          setSearch={setOrderSearch}
+          placeholder="Search by order ID or customer"
+        />
+        <select
+          value={orderStatus}
+          onChange={(e) => setOrderStatus(e.target.value)}
+        >
           <option value="all">All statuses</option>
-          {ORDER_STATUSES.map((status) => <option key={status}>{status}</option>)}
+          {ORDER_STATUSES.map((status) => (
+            <option key={status}>{status}</option>
+          ))}
         </select>
       </div>
-      {filteredOrders.length ? renderOrdersTable(page(filteredOrders, orderPage)) : <EmptyState label="No orders found" />}
+      {filteredOrders.length ? (
+        renderOrdersTable(page(filteredOrders, orderPage))
+      ) : (
+        <EmptyState label="No orders found" />
+      )}
       {renderPagination(filteredOrders.length, orderPage, setOrderPage)}
     </section>
   );
@@ -800,22 +1020,88 @@ const AdminDashboard = () => {
     <div className="admin-two-column">
       <form className="admin-panel admin-form" onSubmit={saveOffer}>
         <h2>{editingOfferId ? "Edit offer" : "Create offer"}</h2>
-        <label>Title<input value={offerForm.title} onChange={(e) => setOfferForm({ ...offerForm, title: e.target.value })} required /></label>
-        <label>Description<textarea rows="4" value={offerForm.description} onChange={(e) => setOfferForm({ ...offerForm, description: e.target.value })} /></label>
+        <label>
+          Title
+          <input
+            value={offerForm.title}
+            onChange={(e) =>
+              setOfferForm({ ...offerForm, title: e.target.value })
+            }
+            required
+          />
+        </label>
+        <label>
+          Description
+          <textarea
+            rows="4"
+            value={offerForm.description}
+            onChange={(e) =>
+              setOfferForm({ ...offerForm, description: e.target.value })
+            }
+          />
+        </label>
         <div className="admin-form-grid">
-          <label>Type<select value={offerForm.discount_type} onChange={(e) => setOfferForm({ ...offerForm, discount_type: e.target.value })}><option value="percent">Percent</option><option value="amount">Amount</option></select></label>
-          <label>Value<input type="number" value={offerForm.discount_value} onChange={(e) => setOfferForm({ ...offerForm, discount_value: e.target.value })} /></label>
+          <label>
+            Type
+            <select
+              value={offerForm.discount_type}
+              onChange={(e) =>
+                setOfferForm({ ...offerForm, discount_type: e.target.value })
+              }
+            >
+              <option value="percent">Percent</option>
+              <option value="amount">Amount</option>
+            </select>
+          </label>
+          <label>
+            Value
+            <input
+              type="number"
+              value={offerForm.discount_value}
+              onChange={(e) =>
+                setOfferForm({ ...offerForm, discount_value: e.target.value })
+              }
+            />
+          </label>
         </div>
-        <label className="admin-check"><input type="checkbox" checked={offerForm.enabled} onChange={(e) => setOfferForm({ ...offerForm, enabled: e.target.checked })} /> Enabled</label>
-        <button className="admin-primary" type="submit"><FaGift /> Save offer</button>
+        <label className="admin-check">
+          <input
+            type="checkbox"
+            checked={offerForm.enabled}
+            onChange={(e) =>
+              setOfferForm({ ...offerForm, enabled: e.target.checked })
+            }
+          />{" "}
+          Enabled
+        </label>
+        <button className="admin-primary" type="submit">
+          <FaGift /> Save offer
+        </button>
       </form>
       <section className="admin-panel admin-list">
         {offers.map((offer) => (
           <article className="admin-list-row" key={offer.id}>
-            <div><h3>{offer.title}</h3><p>{offer.discount_value}{offer.discount_type === "percent" ? "%" : " Rs."} off · {offer.enabled ? "Enabled" : "Disabled"}</p></div>
+            <div>
+              <h3>{offer.title}</h3>
+              <p>
+                {offer.discount_value}
+                {offer.discount_type === "percent" ? "%" : " Rs."} off ·{" "}
+                {offer.enabled ? "Enabled" : "Disabled"}
+              </p>
+            </div>
             <div className="admin-row-actions">
-              <button type="button" onClick={() => { setOfferForm(offer); setEditingOfferId(offer.id); }}><FaEdit /></button>
-              <button type="button" onClick={() => deleteOffer(offer.id)}><FaTrash /></button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOfferForm(offer);
+                  setEditingOfferId(offer.id);
+                }}
+              >
+                <FaEdit />
+              </button>
+              <button type="button" onClick={() => deleteOffer(offer.id)}>
+                <FaTrash />
+              </button>
             </div>
           </article>
         ))}
@@ -829,9 +1115,26 @@ const AdminDashboard = () => {
       <div className="admin-list">
         {page(customers, customerPage).map((customer) => (
           <article className="admin-list-row" key={customer.id}>
-            <div><h3>{customer.name || "Customer"}</h3><p>{customer.email} · {customer.phone || "No phone"}</p></div>
-            <div><strong>{customer.order_count || 0} orders</strong><p>{currency(customer.total_spent)}</p></div>
-            <button type="button" onClick={async () => setCustomerDetail(unwrap(await API.get(`/admin/customers/${customer.id}`)))}>History</button>
+            <div>
+              <h3>{customer.name || "Customer"}</h3>
+              <p>
+                {customer.email} · {customer.phone || "No phone"}
+              </p>
+            </div>
+            <div>
+              <strong>{customer.order_count || 0} orders</strong>
+              <p>{currency(customer.total_spent)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={async () =>
+                setCustomerDetail(
+                  unwrap(await API.get(`/admin/customers/${customer.id}`)),
+                )
+              }
+            >
+              History
+            </button>
           </article>
         ))}
         {!customers.length && <EmptyState label="No customers found" />}
@@ -843,16 +1146,32 @@ const AdminDashboard = () => {
   const renderCategories = () => (
     <section className="admin-panel admin-narrow">
       <form className="admin-inline-form" onSubmit={saveCategory}>
-        <input placeholder="Category name" value={categoryForm} onChange={(e) => setCategoryForm(e.target.value)} />
-        <button className="admin-primary" type="submit">{editingCategoryId ? "Save" : "Add"}</button>
+        <input
+          placeholder="Category name"
+          value={categoryForm}
+          onChange={(e) => setCategoryForm(e.target.value)}
+        />
+        <button className="admin-primary" type="submit">
+          {editingCategoryId ? "Save" : "Add"}
+        </button>
       </form>
       <div className="admin-list">
         {categories.map((category) => (
           <article className="admin-list-row" key={category.id}>
             <h3>{category.name}</h3>
             <div className="admin-row-actions">
-              <button type="button" onClick={() => { setCategoryForm(category.name); setEditingCategoryId(category.id); }}><FaEdit /></button>
-              <button type="button" onClick={() => deleteCategory(category.id)}><FaTrash /></button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryForm(category.name);
+                  setEditingCategoryId(category.id);
+                }}
+              >
+                <FaEdit />
+              </button>
+              <button type="button" onClick={() => deleteCategory(category.id)}>
+                <FaTrash />
+              </button>
             </div>
           </article>
         ))}
@@ -861,42 +1180,168 @@ const AdminDashboard = () => {
   );
 
   const renderSettings = () => (
-    <form className="admin-panel admin-form admin-wide-form" onSubmit={saveRestaurant}>
+    <form
+      className="admin-panel admin-form admin-wide-form"
+      onSubmit={saveRestaurant}
+    >
       <h2>Restaurant settings</h2>
       <div className="admin-form-grid">
-        <label>Name<input value={restaurant.name || ""} onChange={(e) => setRestaurant({ ...restaurant, name: e.target.value })} /></label>
-        <label>Contact number<input value={restaurant.contact_number || ""} onChange={(e) => setRestaurant({ ...restaurant, contact_number: e.target.value })} /></label>
+        <label>
+          Name
+          <input
+            value={restaurant.name || ""}
+            onChange={(e) =>
+              setRestaurant({ ...restaurant, name: e.target.value })
+            }
+          />
+        </label>
+        <label>
+          Contact number
+          <input
+            value={restaurant.contact_number || ""}
+            onChange={(e) =>
+              setRestaurant({ ...restaurant, contact_number: e.target.value })
+            }
+          />
+        </label>
       </div>
-      <label>Address<textarea rows="3" value={restaurant.address || ""} onChange={(e) => setRestaurant({ ...restaurant, address: e.target.value })} /></label>
+      <label>
+        Address
+        <textarea
+          rows="3"
+          value={restaurant.address || ""}
+          onChange={(e) =>
+            setRestaurant({ ...restaurant, address: e.target.value })
+          }
+        />
+      </label>
       <div className="admin-form-grid">
-        <label>Delivery charges<input type="number" value={restaurant.delivery_charge || ""} onChange={(e) => setRestaurant({ ...restaurant, delivery_charge: e.target.value })} /></label>
-        <label>Opening time<input value={restaurant.opening_time || ""} onChange={(e) => setRestaurant({ ...restaurant, opening_time: e.target.value })} /></label>
-        <label>Closing time<input value={restaurant.closing_time || ""} onChange={(e) => setRestaurant({ ...restaurant, closing_time: e.target.value })} /></label>
+        <label>
+          Delivery charges
+          <input
+            type="number"
+            value={restaurant.delivery_charge || ""}
+            onChange={(e) =>
+              setRestaurant({ ...restaurant, delivery_charge: e.target.value })
+            }
+          />
+        </label>
+        <label>
+          Opening time
+          <input
+            value={restaurant.opening_time || ""}
+            onChange={(e) =>
+              setRestaurant({ ...restaurant, opening_time: e.target.value })
+            }
+          />
+        </label>
+        <label>
+          Closing time
+          <input
+            value={restaurant.closing_time || ""}
+            onChange={(e) =>
+              setRestaurant({ ...restaurant, closing_time: e.target.value })
+            }
+          />
+        </label>
       </div>
       <div className="admin-form-grid">
-        <label>Logo<input type="file" accept="image/*" onChange={(e) => handleImage(e, (url) => setRestaurant({ ...restaurant, logo_url: url }))} /></label>
-        <label>Banner<input type="file" accept="image/*" onChange={(e) => handleImage(e, (url) => setRestaurant({ ...restaurant, banner_url: url }))} /></label>
+        <label>
+          Logo
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) =>
+              handleImage(e, (url) =>
+                setRestaurant({ ...restaurant, logo_url: url }),
+              )
+            }
+          />
+        </label>
+        <label>
+          Banner
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) =>
+              handleImage(e, (url) =>
+                setRestaurant({ ...restaurant, banner_url: url }),
+              )
+            }
+          />
+        </label>
       </div>
       <div className="admin-preview-strip">
-        {restaurant.logo_url && <img src={restaurant.logo_url} alt="Logo preview" />}
-        {restaurant.banner_url && <img src={restaurant.banner_url} alt="Banner preview" />}
+        {restaurant.logo_url && (
+          <img src={restaurant.logo_url} alt="Logo preview" />
+        )}
+        {restaurant.banner_url && (
+          <img src={restaurant.banner_url} alt="Banner preview" />
+        )}
       </div>
-      <button className="admin-primary" type="submit">Save settings</button>
+      <button className="admin-primary" type="submit">
+        Save settings
+      </button>
     </form>
   );
 
   const renderProfile = () => (
-    <form className="admin-panel admin-form admin-narrow" onSubmit={saveProfile}>
+    <form
+      className="admin-panel admin-form admin-narrow"
+      onSubmit={saveProfile}
+    >
       <h2>Admin profile</h2>
       <div className="admin-image-preview admin-avatar-preview">
-        {profile.picture ? <img src={profile.picture} alt="Profile preview" /> : <span>No photo</span>}
+        {profile.picture ? (
+          <img src={profile.picture} alt="Profile preview" />
+        ) : (
+          <span>No photo</span>
+        )}
       </div>
-      <input type="file" accept="image/*" onChange={(e) => handleImage(e, (url) => setProfile({ ...profile, picture: url }))} />
-      <label>Name<input value={profile.name || ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} /></label>
-      <label>Phone<input value={profile.phone || ""} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} /></label>
-      <label>Current password<input type="password" value={profile.currentPassword} onChange={(e) => setProfile({ ...profile, currentPassword: e.target.value })} /></label>
-      <label>New password<input type="password" value={profile.newPassword} onChange={(e) => setProfile({ ...profile, newPassword: e.target.value })} /></label>
-      <button className="admin-primary" type="submit">Update profile</button>
+      <input
+        type="file"
+        accept="image/*"
+        onChange={(e) =>
+          handleImage(e, (url) => setProfile({ ...profile, picture: url }))
+        }
+      />
+      <label>
+        Name
+        <input
+          value={profile.name || ""}
+          onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+        />
+      </label>
+      <label>
+        Phone
+        <input
+          value={profile.phone || ""}
+          onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+        />
+      </label>
+      <label>
+        Current password
+        <input
+          type="password"
+          value={profile.currentPassword}
+          onChange={(e) =>
+            setProfile({ ...profile, currentPassword: e.target.value })
+          }
+        />
+      </label>
+      <label>
+        New password
+        <input
+          type="password"
+          value={profile.newPassword}
+          onChange={(e) =>
+            setProfile({ ...profile, newPassword: e.target.value })
+          }
+        />
+      </label>
+      <button className="admin-primary" type="submit">
+        Update profile
+      </button>
     </form>
   );
 
@@ -916,7 +1361,9 @@ const AdminDashboard = () => {
 
   if (needsAdminLogin) {
     return (
-      <div className={`admin-app admin-login-screen ${darkMode ? "admin-app--dark" : ""}`}>
+      <div
+        className={`admin-app admin-login-screen ${darkMode ? "admin-app--dark" : ""}`}
+      >
         <form className="admin-login-card" onSubmit={handleAdminLogin}>
           <div className="admin-brand admin-login-brand">
             <span>GK</span>
@@ -961,32 +1408,60 @@ const AdminDashboard = () => {
             <FaMoon />
           </button>
         </form>
-        {toast && <div className={`admin-toast admin-toast--${toast.type}`}>{toast.message}</div>}
+        {toast && (
+          <div className={`admin-toast admin-toast--${toast.type}`}>
+            {toast.message}
+          </div>
+        )}
       </div>
     );
   }
 
   return (
     <div className={`admin-app ${darkMode ? "admin-app--dark" : ""}`}>
-      <aside className={`admin-sidebar ${sidebarOpen ? "admin-sidebar--open" : ""}`}>
-        <div className="admin-brand"><span>GK</span><strong>Control Panel</strong></div>
+      <aside
+        className={`admin-sidebar ${sidebarOpen ? "admin-sidebar--open" : ""}`}
+      >
+        <div className="admin-brand">
+          <span>GK</span>
+          <strong>Control Panel</strong>
+        </div>
         <nav>
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button type="button" className={activeView === item.id ? "active" : ""} key={item.id} onClick={() => { setActiveView(item.id); setSidebarOpen(false); }}>
+              <button
+                type="button"
+                className={activeView === item.id ? "active" : ""}
+                key={item.id}
+                onClick={() => {
+                  setActiveView(item.id);
+                  setSidebarOpen(false);
+                }}
+              >
                 <Icon /> {item.label}
               </button>
             );
           })}
         </nav>
-        <button type="button" className="admin-logout" onClick={logout}><FaSignOutAlt /> Logout</button>
+        <button type="button" className="admin-logout" onClick={logout}>
+          <FaSignOutAlt /> Logout
+        </button>
       </aside>
 
       <main className="admin-main">
         <header className="admin-topbar">
-          <button type="button" className="admin-icon-button" onClick={() => setSidebarOpen(!sidebarOpen)}><FaBars /></button>
-          <div><p>Restaurant admin</p><h1>{navItems.find((item) => item.id === activeView)?.label}</h1></div>
+          <button
+            type="button"
+            className="admin-icon-button"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
+            <FaBars />
+          </button>
+          <div>
+            <p>Restaurant admin</p>
+            <h1>{navItems.find((item) => item.id === activeView)?.label}</h1>
+          </div>
           <button
             type="button"
             className={`admin-live-toggle ${
@@ -997,20 +1472,41 @@ const AdminDashboard = () => {
             <span />
             {restaurant.is_accepting_orders === false ? "Offline" : "Online"}
           </button>
-          <button type="button" className="admin-icon-button" onClick={() => setDarkMode(!darkMode)}><FaMoon /></button>
+          <button
+            type="button"
+            className="admin-icon-button"
+            onClick={() => setDarkMode(!darkMode)}
+          >
+            <FaMoon />
+          </button>
         </header>
         {renderActiveView()}
       </main>
 
-      {toast && <div className={`admin-toast admin-toast--${toast.type}`}>{toast.message}</div>}
+      {toast && (
+        <div className={`admin-toast admin-toast--${toast.type}`}>
+          {toast.message}
+        </div>
+      )}
       {confirmAction && (
         <div className="admin-modal-backdrop">
           <div className="admin-confirm">
             <h2>{confirmAction.title}</h2>
             <p>{confirmAction.message}</p>
             <div>
-              <button type="button" onClick={() => setConfirmAction(null)}>Cancel</button>
-              <button type="button" className="admin-danger" onClick={async () => { await confirmAction.onConfirm(); setConfirmAction(null); }}>Confirm</button>
+              <button type="button" onClick={() => setConfirmAction(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="admin-danger"
+                onClick={async () => {
+                  await confirmAction.onConfirm();
+                  setConfirmAction(null);
+                }}
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>
@@ -1023,18 +1519,41 @@ const AdminDashboard = () => {
           busy={busyOrderId === detailOrder.id}
         />
       )}
-      {customerDetail && <CustomerDetails customer={customerDetail} onClose={() => setCustomerDetail(null)} />}
+      {customerDetail && (
+        <CustomerDetails
+          customer={customerDetail}
+          onClose={() => setCustomerDetail(null)}
+        />
+      )}
     </div>
   );
 };
 
 const Toolbar = ({ search, setSearch, placeholder }) => (
-  <div className="admin-search"><FaSearch /><input value={search} placeholder={placeholder} onChange={(e) => setSearch(e.target.value)} /></div>
+  <div className="admin-search">
+    <FaSearch />
+    <input
+      value={search}
+      placeholder={placeholder}
+      onChange={(e) => setSearch(e.target.value)}
+    />
+  </div>
 );
 
-const EmptyState = ({ label }) => <div className="admin-empty"><strong>{label}</strong><p>Refresh or change filters to see more results.</p></div>;
+const EmptyState = ({ label }) => (
+  <div className="admin-empty">
+    <strong>{label}</strong>
+    <p>Refresh or change filters to see more results.</p>
+  </div>
+);
 
-const LoadingGrid = () => <div className="admin-loading-grid">{Array.from({ length: 8 }).map((_, index) => <span key={index} />)}</div>;
+const LoadingGrid = () => (
+  <div className="admin-loading-grid">
+    {Array.from({ length: 8 }).map((_, index) => (
+      <span key={index} />
+    ))}
+  </div>
+);
 
 const OrderDetails = ({ order, onClose, onStatusChange, busy }) => {
   const items = parseItems(order.items);
@@ -1051,24 +1570,53 @@ const OrderDetails = ({ order, onClose, onStatusChange, busy }) => {
   return (
     <div className="admin-modal-backdrop">
       <div className="admin-drawer">
-        <button type="button" className="admin-close" onClick={onClose}>Close</button>
+        <button type="button" className="admin-close" onClick={onClose}>
+          Close
+        </button>
         <h2>Order #{order.id}</h2>
         <div className="admin-detail-grid">
-          <p><span>Total amount</span>{currency(order.total_price)}</p>
-          <p><span>Payment</span>{order.payment_method || "Cash on Delivery"}</p>
-          <p><span>Status</span>{order.status || "Pending"}</p>
-          <p><span>Date</span>{dateTime(order.created_at)}</p>
-          <p><span>Customer</span>{order.customer_name || "Guest"}</p>
-          <p><span>Phone</span>{order.phone_number || "Not available"}</p>
+          <p>
+            <span>Total amount</span>
+            {currency(order.total_price)}
+          </p>
+          <p>
+            <span>Payment</span>
+            {order.payment_method || "Cash on Delivery"}
+          </p>
+          <p>
+            <span>Status</span>
+            {order.status || "Pending"}
+          </p>
+          <p>
+            <span>Date</span>
+            {dateTime(order.created_at)}
+          </p>
+          <p>
+            <span>Customer</span>
+            {order.customer_name || "Guest"}
+          </p>
+          <p>
+            <span>Phone</span>
+            {order.phone_number || "Not available"}
+          </p>
         </div>
-        <p className="admin-address"><span>Delivery address</span>{order.location || "Not available"}</p>
+        <p className="admin-address">
+          <span>Delivery address</span>
+          {order.location || "Not available"}
+        </p>
         {(order.order_instructions || order.order_preferences) && (
           <div className="admin-order-notes">
             {order.order_instructions && (
-              <p><span>Instructions</span>{order.order_instructions}</p>
+              <p>
+                <span>Instructions</span>
+                {order.order_instructions}
+              </p>
             )}
             {order.order_preferences && (
-              <p><span>Preferences</span>{parseItems(order.order_preferences).join(", ") || "None"}</p>
+              <p>
+                <span>Preferences</span>
+                {parseItems(order.order_preferences).join(", ") || "None"}
+              </p>
             )}
           </div>
         )}
@@ -1107,15 +1655,23 @@ const OrderDetails = ({ order, onClose, onStatusChange, busy }) => {
         <h3>Ordered items</h3>
         <div className="admin-list">
           {items.map((item, index) => {
-            const name = item.name || item.menu_name || item.item_name || "Item";
+            const name =
+              item.name || item.menu_name || item.item_name || "Item";
             const quantity = Number(item.quantity || item.qty || 1);
             const price = Number(item.price || item.unit_price || 0);
             return (
-            <article className="admin-list-row" key={`${name}-${index}`}>
-              <div><h3>{name}</h3><p>Quantity: {quantity} · Unit: {currency(price)}{item.item_type === "addon" ? " · Add-on" : ""}</p></div>
-              <strong>{currency(price * quantity)}</strong>
-            </article>
-          )})}
+              <article className="admin-list-row" key={`${name}-${index}`}>
+                <div>
+                  <h3>{name}</h3>
+                  <p>
+                    Quantity: {quantity} · Unit: {currency(price)}
+                    {item.item_type === "addon" ? " · Add-on" : ""}
+                  </p>
+                </div>
+                <strong>{currency(price * quantity)}</strong>
+              </article>
+            );
+          })}
           {!items.length && <EmptyState label="No item details saved" />}
         </div>
       </div>
@@ -1126,14 +1682,23 @@ const OrderDetails = ({ order, onClose, onStatusChange, busy }) => {
 const CustomerDetails = ({ customer, onClose }) => (
   <div className="admin-modal-backdrop">
     <div className="admin-drawer">
-      <button type="button" className="admin-close" onClick={onClose}>Close</button>
+      <button type="button" className="admin-close" onClick={onClose}>
+        Close
+      </button>
       <h2>{customer.name || "Customer"}</h2>
-      <p className="admin-muted">{customer.email} · {customer.phone || "No phone"}</p>
+      <p className="admin-muted">
+        {customer.email} · {customer.phone || "No phone"}
+      </p>
       <h3>Order history</h3>
       <div className="admin-list">
         {(customer.orders || []).map((order) => (
           <article className="admin-list-row" key={order.id}>
-            <div><h3>Order #{order.id}</h3><p>{dateTime(order.created_at)} · {order.status || "Pending"}</p></div>
+            <div>
+              <h3>Order #{order.id}</h3>
+              <p>
+                {dateTime(order.created_at)} · {order.status || "Pending"}
+              </p>
+            </div>
             <strong>{currency(order.total_price)}</strong>
           </article>
         ))}

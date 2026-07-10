@@ -1,6 +1,0 @@
-◇ injected env (11) from .env // tip: ⌘ override existing { override: true }
-◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
-Registered endpoints: []
-🚀 Server running on port 5000
-🚀 PostgreSQL Connected...
-✅ PostgreSQL Database Connected
