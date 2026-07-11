@@ -280,17 +280,6 @@ const Navbar = () => {
                     Log In
                   </a>
                 )}
-
-
-                 <a href="#login"
-                className="p__opensans nav-login-btn"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setIsLoginOpen(true);
-                }}
-              >
-                Log In
-              </a>
               </div>
             </div>
           )}
