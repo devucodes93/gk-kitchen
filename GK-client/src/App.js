@@ -28,7 +28,6 @@ function HomePage() {
       <Intro />
       <Gallery />
       <FindUs />
-      <TrackingMap/>
       <Footer />
     </>
   );

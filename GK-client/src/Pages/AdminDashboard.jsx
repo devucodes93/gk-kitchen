@@ -295,10 +295,7 @@ const AdminDashboard = () => {
       }
     },
     [showToast], // add any other outer-scope values it reads: setAdminTokenForRequest, setLoading, setNeedsAdminLogin, VIEW_FETCHERS
-  );
-  useEffect(() => {
-    loadView(currentView); // whatever it's called there
-  }, [loadView, currentView]); // include loadView now
+  );// include loadView now
 
   // initial + tab-change load
   useEffect(() => {
