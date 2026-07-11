@@ -16,7 +16,7 @@ router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect: "https://gk-kitchen-blush.vercel.app/",
+    failureRedirect: "https://gk-kitchen-blush.vercel.app",
   }),
   (req, res) => {
     const token = jwt.sign(
