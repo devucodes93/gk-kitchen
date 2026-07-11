@@ -4,8 +4,7 @@ const Login = ({ isLoginOpen, setIsLoginOpen }) => {
   if (!isLoginOpen) return null;
 
   const handleGoogleLogin = () => {
-    window.location.href =
-      "http://localhost:5000/api/auth/google";
+    window.location.href = "https://gk-kitchen.onrender.com/api/auth/google";
   };
 
   return (

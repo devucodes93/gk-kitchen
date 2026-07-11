@@ -15,7 +15,8 @@ import {
 import "./OrderScreen.css";
 
 // TODO: replace with your real backend path
-const ORDER_API_ENDPOINT = "http://localhost:5000/api/orders/place-order";
+const ORDER_API_ENDPOINT =
+  "https://gk-kitchen.onrender.com/api/orders/place-order";
 const ADDON_OPTIONS = [
   {
     id: "raita",
@@ -163,10 +164,10 @@ const OrderScreen = ({
     const loadCustomerData = async () => {
       try {
         const [meRes, ordersRes] = await Promise.all([
-          fetch("http://localhost:5000/api/auth/me", {
+          fetch("https://gk-kitchen.onrender.com/api/auth/me", {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch("http://localhost:5000/api/orders/my-orders", {
+          fetch("https://gk-kitchen.onrender.com/api/orders/my-orders", {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -399,7 +400,9 @@ const OrderScreen = ({
       setOrderId(data.data?.id || data.orderId || data.id || "—");
       setStatus("success");
     } catch (error) {
-      setErrorMessage(error.message || "Couldn't place the order. Please try again.");
+      setErrorMessage(
+        error.message || "Couldn't place the order. Please try again.",
+      );
       setStatus("error");
     }
   };

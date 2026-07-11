@@ -313,7 +313,7 @@ const AdminDashboard = () => {
     if (!adminToken) return undefined;
 
     const source = new EventSource(
-      `http://localhost:5000/api/orders/events?token=${encodeURIComponent(adminToken)}`,
+      `https://gk-kitchen.onrender.com/api/orders/events?token=${encodeURIComponent(adminToken)}`,
     );
 
     const handleOrderEvent = (event) => {

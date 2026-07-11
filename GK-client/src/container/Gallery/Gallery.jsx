@@ -30,7 +30,7 @@ const Gallery = () => {
   const [connecting, setConnecting] = useState(false);
 
   const fetchInstagramFeed = () => {
-    fetch("http://localhost:5000/api/instagram-feed")
+    fetch("https://gk-kitchen.onrender.com/api/instagram-feed")
       .then((res) => res.json())
       .then((data) => {
         const posts = Array.isArray(data.posts)
@@ -71,9 +71,7 @@ const Gallery = () => {
       <div className="app__gallery-content">
         <SubHeading title="Instagram" />
 
-        <h1 className="headtext__cormorant">
-          Photo Gallery
-        </h1>
+        <h1 className="headtext__cormorant">Photo Gallery</h1>
 
         <p
           className="p__opensans"
@@ -90,10 +88,7 @@ const Gallery = () => {
           type="button"
           className="custom__button"
           onClick={() =>
-            window.open(
-              "https://www.instagram.com/gautamkitchen/",
-              "_blank"
-            )
+            window.open("https://www.instagram.com/gautamkitchen/", "_blank")
           }
         >
           View More
@@ -101,15 +96,9 @@ const Gallery = () => {
       </div>
 
       <div className="app__gallery-images">
-        <div
-          className="app__gallery-images_container"
-          ref={scrollRef}
-        >
+        <div className="app__gallery-images_container" ref={scrollRef}>
           {/* Loading Skeleton */}
-          {loading &&
-            [1, 2, 3, 4, 5].map((i) => (
-              <SkeletonCard key={i} />
-            ))}
+          {loading && [1, 2, 3, 4, 5].map((i) => <SkeletonCard key={i} />)}
 
           {/* Connecting UI */}
           {!loading && connecting && (
@@ -152,8 +141,8 @@ const Gallery = () => {
                   }}
                 >
                   <img
-                    src={`http://localhost:5000/api/proxy-image?url=${encodeURIComponent(
-                      post.url
+                    src={`https://gk-kitchen.onrender.com/api/proxy-image?url=${encodeURIComponent(
+                      post.url,
                     )}`}
                     alt={post.caption || "Instagram Post"}
                     onError={(e) => {

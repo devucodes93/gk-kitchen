@@ -106,7 +106,7 @@ const RiderDashboard = () => {
     if (!token) return undefined;
 
     const source = new EventSource(
-      `http://localhost:5000/api/orders/events?token=${encodeURIComponent(token)}`,
+      `https://gk-kitchen.onrender.com/api/orders/events?token=${encodeURIComponent(token)}`,
     );
     const refreshOrders = () => fetchOrders({ silent: true });
 
@@ -134,7 +134,8 @@ const RiderDashboard = () => {
   };
 
   const updateOrder = async (order, action) => {
-    const label = action === "pick" ? "Picking order..." : "Marking delivered...";
+    const label =
+      action === "pick" ? "Picking order..." : "Marking delivered...";
     setToast({ message: label, type: "loading" });
     setActionOrderId(order.id);
 
@@ -171,8 +172,8 @@ const RiderDashboard = () => {
             <strong>Rider Login</strong>
           </div>
           <p>
-            Login as a rider. If this rider email is new, the account is
-            created automatically.
+            Login as a rider. If this rider email is new, the account is created
+            automatically.
           </p>
           <label>
             Name
@@ -408,7 +409,9 @@ const RiderOrderDetail = ({ order, onUpdate, actionOrderId }) => {
           ) : (
             <div className="admin-empty">
               <strong>Map location unavailable</strong>
-              <p>Use the saved address and call the customer before delivery.</p>
+              <p>
+                Use the saved address and call the customer before delivery.
+              </p>
             </div>
           )}
 
