@@ -212,12 +212,6 @@ const Navbar = () => {
               >
                 Log In
               </a>
-
-              <div className="nav-divider" />
-
-              {/* <a href="/" className="nav-book-btn">
-                Book Table
-              </a> */}
             </>
           )}
         </div>
@@ -286,11 +280,18 @@ const Navbar = () => {
                     Log In
                   </a>
                 )}
-              </div>
 
-              <a href="/" className="overlay__book-btn">
-                Book a Table
+
+                 <a href="#login"
+                className="p__opensans nav-login-btn"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setIsLoginOpen(true);
+                }}
+              >
+                Log In
               </a>
+              </div>
             </div>
           )}
         </div>

@@ -165,6 +165,25 @@
   margin-bottom: 2rem;
 }
 
+
+.nav-login-btn {
+  display: inline-block;
+  padding: 0.4rem 1.1rem;
+  border: 1px solid var(--color-golden);
+  border-radius: 2px;
+  color: var(--color-golden);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.nav-login-btn:hover {
+  background: var(--color-golden);
+  color: var(--color-black);
+}
+
 .overlay__logo img {
   width: 120px;
   opacity: 0.9;
