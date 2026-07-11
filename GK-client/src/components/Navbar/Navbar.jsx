@@ -23,6 +23,7 @@ const Navbar = () => {
   const [activeLink, setActiveLink] = useState("#home");
   const [isLoginOpen, setIsLoginOpen] = useState(false); // Integrated from second snippet
   const [user, setUser] = useState(null);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -111,9 +112,16 @@ const Navbar = () => {
       }
     };
 
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+
     window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleResize);
     handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
+    handleResize();
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
+    };
   }, []);
 
   const navClass = isMenuPage
@@ -143,10 +151,12 @@ const Navbar = () => {
               >
                 {link.label}
                 <span className="nav-underline" />
+                
               </a>
             </li>
           ))}
         </ul>
+        
 
         <div className="app__navbar-login">
           {user ? (
@@ -162,8 +172,8 @@ const Navbar = () => {
                   src={user.picture}
                   alt="profile"
                   style={{
-                    width: "42px",
-                    height: "42px",
+                    width: isMobile ? "46px" : "42px",
+                    height: isMobile ? "46px" : "42px",
                     borderRadius: "50%",
                     objectFit: "cover",
                     border: "2px solid #DCCA87",
@@ -255,10 +265,42 @@ const Navbar = () => {
                       src={user.picture}
                       alt="profile"
                       className="overlay__avatar"
+                      style={
+                        isMobile
+                          ? {
+                              width: "46px",
+                              height: "46px",
+                              borderRadius: "50%",
+                              objectFit: "cover",
+                              border: "2px solid #DCCA87",
+                            }
+                          : undefined
+                      }
                     />
                     <button
                       type="button"
                       className="overlay__logout-btn"
+                      style={
+                        isMobile
+                          ? {
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              minWidth: "140px",
+                              padding: "0.7rem 1.2rem",
+                              border: "1px solid #DCCA87",
+                              borderRadius: "2px",
+                              background: "transparent",
+                              color: "#DCCA87",
+                              fontFamily: "var(--font-base)",
+                              fontSize: "0.95rem",
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                              cursor: "pointer",
+                              transition: "all 0.3s ease",
+                            }
+                          : undefined
+                      }
                       onClick={() => {
                         localStorage.removeItem("token");
                         window.location.reload();

@@ -45,39 +45,6 @@ const Footer = () => {
     >
       <FooterOverlay />
 
-      {/* Styled Club Section wrapped with Golden Borders, Macha! */}
-      <div
-        className="app__footer-newsletter flex__center"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          marginBottom: "4rem",
-          padding: "2.5rem",
-          position: "relative",
-          border: "1px solid rgba(220, 202, 135, 0.2)",
-          width: "100%",
-          maxWidth: "850px",
-
-          margin: "0 auto 4rem auto",
-        }}
-      >
-        {/* Top-left corner */}
-        {/* Bottom-right corner */}
-
-        <h1 className="app__footer-headtext">Join the Elite Club</h1>
-        <p className="p__opensans">
-          Connect with us to unlock premium loyalty offers!
-        </p>
-        <button
-          type="button"
-          className="custom__button"
-          style={{ marginTop: "1.5rem" }}
-          onClick={() => setIsOpen(true)}
-        >
-          Connect With Us
-        </button>
-      </div>
 
       <div className="app__footer-links">
         <div className="app__footer-links_contact">

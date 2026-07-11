@@ -242,6 +242,54 @@
   color: var(--color-black);
 }
 
+.overlay__account {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.overlay__user {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.overlay__avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--color-golden);
+}
+
+.overlay__login-link,
+.overlay__logout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 140px;
+  padding: 0.7rem 1.2rem;
+  border: 1px solid var(--color-golden);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-golden);
+  font-family: var(--font-base);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background 0.3s ease, color 0.3s ease, transform 0.2s ease;
+}
+
+.overlay__login-link:hover,
+.overlay__logout-btn:hover {
+  background: var(--color-golden);
+  color: var(--color-black);
+  transform: translateY(-1px);
+}
+
 /* ── Responsive ── */
 @media screen and (min-width: 2000px) {
   .app__navbar-logo img { width: 210px; }
