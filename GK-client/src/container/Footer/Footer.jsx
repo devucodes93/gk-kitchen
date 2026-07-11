@@ -98,7 +98,7 @@ const Footer = () => {
             src={images.G}
             className="spoon__img"
             style={{ marginTop: 15 }}
-            loading="lazy"
+            loading="lazy" alt=""
           />
           <div className="app__footer-links_icons">
             <FiFacebook /> <FiTwitter /> <FiInstagram />

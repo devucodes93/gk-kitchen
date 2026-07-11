@@ -275,25 +275,30 @@ const AdminDashboard = () => {
     settings: [fetchRestaurant],
     profile: [fetchMe],
   };
-
-  const loadView = async (view, { force = false } = {}) => {
-    if (!force && loadedRef.current.has(view)) return;
-    setAdminTokenForRequest();
-    setLoading(true);
-    try {
-      for (const fn of VIEW_FETCHERS[view] || []) await fn();
-      loadedRef.current.add(view);
-    } catch (err) {
-      if ([401, 403].includes(err.response?.status)) setNeedsAdminLogin(true);
-      else
-        showToast(
-          err.response?.data?.message || "Unable to load data",
-          "error",
-        );
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadView = useCallback(
+    async (view, { force = false } = {}) => {
+      if (!force && loadedRef.current.has(view)) return;
+      setAdminTokenForRequest();
+      setLoading(true);
+      try {
+        for (const fn of VIEW_FETCHERS[view] || []) await fn();
+        loadedRef.current.add(view);
+      } catch (err) {
+        if ([401, 403].includes(err.response?.status)) setNeedsAdminLogin(true);
+        else
+          showToast(
+            err.response?.data?.message || "Unable to load data",
+            "error",
+          );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [showToast], // add any other outer-scope values it reads: setAdminTokenForRequest, setLoading, setNeedsAdminLogin, VIEW_FETCHERS
+  );
+  useEffect(() => {
+    loadView(currentView); // whatever it's called there
+  }, [loadView, currentView]); // include loadView now
 
   // initial + tab-change load
   useEffect(() => {
