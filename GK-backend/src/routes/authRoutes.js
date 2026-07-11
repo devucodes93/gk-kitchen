@@ -32,7 +32,7 @@ router.get(
     );
 
     res.redirect(
-      `http://localhost:3000/auth-success?token=${token}`
+      `https://gk-kitchen-blush.vercel.app/auth-success?token=${token}`
     );
   }
 );
