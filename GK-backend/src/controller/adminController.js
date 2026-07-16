@@ -569,8 +569,8 @@ const updateRestaurant = async (req, res) => {
       banner_url,
       contact_number,
       address,
-      gst_percentage,
-      delivery_radius,
+      gst,
+      deliveryRadiusKm,
       delivery_charge,
       opening_time,
       closing_time,
@@ -620,8 +620,8 @@ const updateRestaurant = async (req, res) => {
         opening_time,
         closing_time,
         is_accepting_orders,
-        gst_percentage,
-        delivery_radius,
+        gst,
+        deliveryRadiusKm,
       ],
     );
 
