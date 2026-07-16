@@ -563,6 +563,7 @@ const getRestaurant = async (req, res) => {
 const updateRestaurant = async (req, res) => {
   try {
     await ensureAdminTables();
+
     const {
       name,
       logo_url,
@@ -592,7 +593,7 @@ const updateRestaurant = async (req, res) => {
         closing_time = $8,
         is_accepting_orders = $9,
         gst = $10,
-         "deliveryRadiusKm" = $11,
+        "deliveryRadiusKm" = $11,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = 1
       RETURNING
@@ -603,12 +604,12 @@ const updateRestaurant = async (req, res) => {
         contact_number,
         address,
         gst,
-        "deliveryRadiusKm",
+        "deliveryRadiusKm" AS "deliveryRadiusKm",
         delivery_charge,
         opening_time,
         closing_time,
         is_accepting_orders,
-        updated_at
+        updated_at;
       `,
       [
         name,
@@ -634,17 +635,17 @@ const updateRestaurant = async (req, res) => {
 
     invalidateResourceCache("admin:restaurant");
 
-    res.json({
+    return res.json({
       success: true,
       data: result.rows[0],
     });
   } catch (error) {
     console.error("[adminController] updateRestaurant failed:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to update restaurant settings",
-      error: error.message, // Remove in production
+      error: error.message,
     });
   }
 };
