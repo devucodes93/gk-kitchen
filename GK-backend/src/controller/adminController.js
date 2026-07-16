@@ -593,7 +593,7 @@ const updateRestaurant = async (req, res) => {
         closing_time = $8,
         is_accepting_orders = $9,
         gst = $10,
-         "deliveryRadiusKm" = $11
+         "deliveryRadiusKm" = $11,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = 1
       RETURNING

@@ -1379,39 +1379,40 @@ const AdminDashboard = () => {
             }
           />
         </label>
-      </div><div className="admin-form-grid">
-  <label>
-    GST (%)
-    <input
-      type="number"
-      min="0"
-      step="0.1"
-      value={restaurant.gst_percentage || ""}
-      onChange={(e) =>
-        setRestaurant({
-          ...restaurant,
-          gst_percentage: Number(e.target.value),
-        })
-      }
-    />
-  </label>
+      </div>
+      <div className="admin-form-grid">
+        <label>
+          GST (%)
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={restaurant.gst || ""}
+            onChange={(e) =>
+              setRestaurant({
+                ...restaurant,
+                gst_percentage: Number(e.target.value),
+              })
+            }
+          />
+        </label>
 
-  <label>
-    Delivery Radius (KM)
-    <input
-      type="number"
-      min="0"
-      step="0.5"
-      value={restaurant.delivery_radius || ""}
-      onChange={(e) =>
-        setRestaurant({
-          ...restaurant,
-          delivery_radius: Number(e.target.value),
-        })
-      }
-    />
-  </label>
-</div>
+        <label>
+          Delivery Radius (KM)
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={restaurant.deliveryRadiusKm || ""}
+            onChange={(e) =>
+              setRestaurant({
+                ...restaurant,
+                delivery_radius: Number(e.target.value),
+              })
+            }
+          />
+        </label>
+      </div>
       <div className="admin-preview-strip">
         {restaurant.logo_url && (
           <img src={restaurant.logo_url} alt="Logo preview" />
