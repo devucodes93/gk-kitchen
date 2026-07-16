@@ -21,13 +21,17 @@ const runQuery = async (label, query, params = []) => {
     );
     return result;
   } catch (error) {
-    console.error(`[adminController] ✖ ${label}`, { message: error.message, code: error.code });
+    console.error(`[adminController] ✖ ${label}`, {
+      message: error.message,
+      code: error.code,
+    });
     const isConnectionError =
       error?.code === "ECONNREFUSED" ||
       error?.code === "ETIMEDOUT" ||
       error?.message?.includes("timeout exceeded") ||
       error?.message?.includes("connect");
-    if (isConnectionError) throw new Error(`Database connection issue while running ${label}`);
+    if (isConnectionError)
+      throw new Error(`Database connection issue while running ${label}`);
     throw error;
   }
 };
@@ -101,38 +105,63 @@ const ensureAdminTables = async () => {
 };
 
 const buildDashboardPayload = async () => {
-  const [revenue, todaysRevenue, statusCounts, customerCount, menuCount, recentOrders] =
-    await Promise.all([
-      runQuery("total revenue + order count", `
+  const [
+    revenue,
+    todaysRevenue,
+    statusCounts,
+    customerCount,
+    menuCount,
+    recentOrders,
+  ] = await Promise.all([
+    runQuery(
+      "total revenue + order count",
+      `
         SELECT COALESCE(SUM(total_price), 0)::numeric AS total_revenue, COUNT(*)::int AS total_orders
         FROM orders
-      `),
-      runQuery("todays revenue", `
+      `,
+    ),
+    runQuery(
+      "todays revenue",
+      `
         SELECT COALESCE(SUM(total_price), 0)::numeric AS todays_revenue
         FROM orders
         WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'
-      `),
-      runQuery("order status counts", `
+      `,
+    ),
+    runQuery(
+      "order status counts",
+      `
         SELECT COALESCE(status, 'Pending') AS status, COUNT(*)::int AS count
         FROM orders
         GROUP BY COALESCE(status, 'Pending')
-      `),
-      runQuery("customer count", `
+      `,
+    ),
+    runQuery(
+      "customer count",
+      `
         SELECT COUNT(*)::int AS total_customers FROM users WHERE role IS DISTINCT FROM 'admin'
-      `),
-      runQuery("menu item count", `
+      `,
+    ),
+    runQuery(
+      "menu item count",
+      `
         SELECT COUNT(*)::int AS total_menu_items FROM menu WHERE is_available IS NOT FALSE
-      `),
-      runQuery("recent orders", `
+      `,
+    ),
+    runQuery(
+      "recent orders",
+      `
         SELECT id, customer_name, total_price, status, created_at, payment_method
         FROM orders
         ORDER BY created_at DESC
         LIMIT 8
-      `),
-    ]);
+      `,
+    ),
+  ]);
 
   const statusMap = {};
-  for (const row of statusCounts.rows) statusMap[row.status] = Number(row.count);
+  for (const row of statusCounts.rows)
+    statusMap[row.status] = Number(row.count);
 
   return {
     totalRevenue: Number(revenue.rows[0]?.total_revenue || 0),
@@ -185,7 +214,11 @@ const getDashboard = async (req, res) => {
     res.json({ success: true, data: payload });
   } catch (error) {
     console.error("[adminController] getDashboard failed", error);
-    res.status(502).json({ success: false, message: "Unable to load dashboard data right now", error: error.message });
+    res.status(502).json({
+      success: false,
+      message: "Unable to load dashboard data right now",
+      error: error.message,
+    });
   }
 };
 
@@ -201,63 +234,102 @@ const getBootstrap = async (req, res) => {
     const cachedCategories = getResourceCache("admin:categories");
     const cachedRestaurant = getResourceCache("admin:restaurant");
 
-    const [dashboard, menu, orders, offers, customers, categories, restaurant] = await Promise.all([
-      cachedDashboard ? Promise.resolve(cachedDashboard) : buildDashboardPayload().then((payload) => {
-        setDashboardCache(payload);
-        return payload;
-      }),
-      cachedMenu ? Promise.resolve(cachedMenu) : runQuery("bootstrap menu", "SELECT * FROM menu ORDER BY menu_id DESC").then((result) => {
-        const menuRows = result.rows;
-        setResourceCache("admin:menu", menuRows);
-        return menuRows;
-      }),
-      cachedOrders ? Promise.resolve(cachedOrders) : runQuery("bootstrap orders", "SELECT * FROM orders ORDER BY created_at DESC LIMIT 200").then((result) => {
-        const ordersRows = result.rows;
-        setResourceCache("admin:orders", ordersRows);
-        return ordersRows;
-      }),
-      cachedOffers ? Promise.resolve(cachedOffers) : runQuery("bootstrap offers", `
+    const [dashboard, menu, orders, offers, customers, categories, restaurant] =
+      await Promise.all([
+        cachedDashboard
+          ? Promise.resolve(cachedDashboard)
+          : buildDashboardPayload().then((payload) => {
+              setDashboardCache(payload);
+              return payload;
+            }),
+        cachedMenu
+          ? Promise.resolve(cachedMenu)
+          : runQuery(
+              "bootstrap menu",
+              "SELECT * FROM menu ORDER BY menu_id DESC",
+            ).then((result) => {
+              const menuRows = result.rows;
+              setResourceCache("admin:menu", menuRows);
+              return menuRows;
+            }),
+        cachedOrders
+          ? Promise.resolve(cachedOrders)
+          : runQuery(
+              "bootstrap orders",
+              "SELECT * FROM orders ORDER BY created_at DESC LIMIT 200",
+            ).then((result) => {
+              const ordersRows = result.rows;
+              setResourceCache("admin:orders", ordersRows);
+              return ordersRows;
+            }),
+        cachedOffers
+          ? Promise.resolve(cachedOffers)
+          : runQuery(
+              "bootstrap offers",
+              `
         SELECT id, title, description, discount_type, discount_value, enabled, created_at, updated_at
         FROM offers ORDER BY id DESC
-      `).then((result) => {
-        setResourceCache("admin:offers", result.rows);
-        return result.rows;
-      }),
-      cachedCustomers ? Promise.resolve(cachedCustomers) : runQuery("bootstrap customers", `
+      `,
+            ).then((result) => {
+              setResourceCache("admin:offers", result.rows);
+              return result.rows;
+            }),
+        cachedCustomers
+          ? Promise.resolve(cachedCustomers)
+          : runQuery(
+              "bootstrap customers",
+              `
         SELECT id, name, email, phone, picture FROM users ORDER BY id DESC
-      `).then((usersResult) => {
-        return runQuery("bootstrap customer totals", `
+      `,
+            ).then((usersResult) => {
+              return runQuery(
+                "bootstrap customer totals",
+                `
           SELECT user_id, COUNT(*)::int AS order_count, COALESCE(SUM(total_price), 0)::numeric AS total_spent
           FROM orders
           GROUP BY user_id
-        `).then((totalsResult) => {
-          const totalsMap = {};
-          for (const row of totalsResult.rows) {
-            totalsMap[row.user_id] = { order_count: row.order_count, total_spent: Number(row.total_spent) };
-          }
-          const data = usersResult.rows.map((user) => ({
-            ...user,
-            order_count: totalsMap[user.id]?.order_count || 0,
-            total_spent: totalsMap[user.id]?.total_spent || 0,
-          }));
-          setResourceCache("admin:customers", data);
-          return data;
-        });
-      }),
-      cachedCategories ? Promise.resolve(cachedCategories) : runQuery("bootstrap categories", "SELECT id, name, created_at, updated_at FROM menu_categories ORDER BY name ASC").then((result) => {
-        setResourceCache("admin:categories", result.rows);
-        return result.rows;
-      }),
-      cachedRestaurant ? Promise.resolve(cachedRestaurant) : runQuery("bootstrap restaurant", `
+        `,
+              ).then((totalsResult) => {
+                const totalsMap = {};
+                for (const row of totalsResult.rows) {
+                  totalsMap[row.user_id] = {
+                    order_count: row.order_count,
+                    total_spent: Number(row.total_spent),
+                  };
+                }
+                const data = usersResult.rows.map((user) => ({
+                  ...user,
+                  order_count: totalsMap[user.id]?.order_count || 0,
+                  total_spent: totalsMap[user.id]?.total_spent || 0,
+                }));
+                setResourceCache("admin:customers", data);
+                return data;
+              });
+            }),
+        cachedCategories
+          ? Promise.resolve(cachedCategories)
+          : runQuery(
+              "bootstrap categories",
+              "SELECT id, name, created_at, updated_at FROM menu_categories ORDER BY name ASC",
+            ).then((result) => {
+              setResourceCache("admin:categories", result.rows);
+              return result.rows;
+            }),
+        cachedRestaurant
+          ? Promise.resolve(cachedRestaurant)
+          : runQuery(
+              "bootstrap restaurant",
+              `
         SELECT id, name, logo_url, banner_url, contact_number, address, delivery_charge,
                opening_time, closing_time, is_accepting_orders, updated_at
         FROM restaurant_settings WHERE id=1
-      `).then((result) => {
-        const restaurantRow = result.rows[0];
-        setResourceCache("admin:restaurant", restaurantRow);
-        return restaurantRow;
-      }),
-    ]);
+      `,
+            ).then((result) => {
+              const restaurantRow = result.rows[0];
+              setResourceCache("admin:restaurant", restaurantRow);
+              return restaurantRow;
+            }),
+      ]);
 
     res.json({
       success: true,
@@ -273,7 +345,11 @@ const getBootstrap = async (req, res) => {
     });
   } catch (error) {
     console.error("[adminController] getBootstrap failed", error);
-    res.status(502).json({ success: false, message: "Unable to load admin bootstrap data", error: error.message });
+    res.status(502).json({
+      success: false,
+      message: "Unable to load admin bootstrap data",
+      error: error.message,
+    });
   }
 };
 
@@ -284,19 +360,28 @@ const getCustomers = async (req, res) => {
     if (cached) return res.json({ success: true, data: cached });
 
     const [users, orderTotals] = await Promise.all([
-      runQuery("getCustomers users", `
+      runQuery(
+        "getCustomers users",
+        `
         SELECT id, name, email, phone, picture FROM users ORDER BY id DESC
-      `),
-      runQuery("getCustomers order totals", `
+      `,
+      ),
+      runQuery(
+        "getCustomers order totals",
+        `
         SELECT user_id, COUNT(*)::int AS order_count, COALESCE(SUM(total_price), 0)::numeric AS total_spent
         FROM orders
         GROUP BY user_id
-      `),
+      `,
+      ),
     ]);
 
     const totalsMap = {};
     for (const row of orderTotals.rows) {
-      totalsMap[row.user_id] = { order_count: row.order_count, total_spent: Number(row.total_spent) };
+      totalsMap[row.user_id] = {
+        order_count: row.order_count,
+        total_spent: Number(row.total_spent),
+      };
     }
 
     const data = users.rows.map((u) => ({
@@ -309,28 +394,45 @@ const getCustomers = async (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     console.error("[adminController] getCustomers failed", error);
-    res.status(502).json({ success: false, message: "Failed to load customers" });
+    res
+      .status(502)
+      .json({ success: false, message: "Failed to load customers" });
   }
 };
 
 const getCustomer = async (req, res) => {
   try {
     const [customer, orders] = await Promise.all([
-      runQuery("getCustomer profile", "SELECT id, name, email, phone, picture FROM users WHERE id=$1", [req.params.id]),
-      runQuery("getCustomer orders", `
+      runQuery(
+        "getCustomer profile",
+        "SELECT id, name, email, phone, picture FROM users WHERE id=$1",
+        [req.params.id],
+      ),
+      runQuery(
+        "getCustomer orders",
+        `
         SELECT id, customer_name, total_price, status, created_at, payment_method
         FROM orders WHERE user_id=$1 ORDER BY created_at DESC
-      `, [req.params.id]),
+      `,
+        [req.params.id],
+      ),
     ]);
 
     if (!customer.rows.length) {
-      return res.status(404).json({ success: false, message: "Customer not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
     }
 
-    res.json({ success: true, data: { ...customer.rows[0], orders: orders.rows } });
+    res.json({
+      success: true,
+      data: { ...customer.rows[0], orders: orders.rows },
+    });
   } catch (error) {
     console.error("[adminController] getCustomer failed", error);
-    res.status(502).json({ success: false, message: "Failed to load customer" });
+    res
+      .status(502)
+      .json({ success: false, message: "Failed to load customer" });
   }
 };
 
@@ -340,10 +442,13 @@ const getOffers = async (req, res) => {
     const cached = getResourceCache("admin:offers");
     if (cached) return res.json({ success: true, data: cached });
 
-    const result = await runQuery("getOffers", `
+    const result = await runQuery(
+      "getOffers",
+      `
       SELECT id, title, description, discount_type, discount_value, enabled, created_at, updated_at
       FROM offers ORDER BY id DESC
-    `);
+    `,
+    );
     setResourceCache("admin:offers", result.rows);
     res.json({ success: true, data: result.rows });
   } catch (error) {
@@ -355,12 +460,22 @@ const getOffers = async (req, res) => {
 const createOffer = async (req, res) => {
   try {
     await ensureAdminTables();
-    const { title, description, discount_type, discount_value, enabled = true } = req.body;
-    const result = await runQuery("createOffer", `
+    const {
+      title,
+      description,
+      discount_type,
+      discount_value,
+      enabled = true,
+    } = req.body;
+    const result = await runQuery(
+      "createOffer",
+      `
       INSERT INTO offers (title, description, discount_type, discount_value, enabled)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING id, title, description, discount_type, discount_value, enabled, created_at, updated_at
-    `, [title, description, discount_type, discount_value, enabled]);
+    `,
+      [title, description, discount_type, discount_value, enabled],
+    );
     invalidateResourceCache("admin:offers");
     invalidateDashboardCache();
     res.status(201).json({ success: true, data: result.rows[0] });
@@ -373,13 +488,30 @@ const createOffer = async (req, res) => {
 const updateOffer = async (req, res) => {
   try {
     await ensureAdminTables();
-    const { title, description, discount_type, discount_value, enabled = true } = req.body;
-    const result = await runQuery("updateOffer", `
+    const {
+      title,
+      description,
+      discount_type,
+      discount_value,
+      enabled = true,
+    } = req.body;
+    const result = await runQuery(
+      "updateOffer",
+      `
       UPDATE offers
       SET title=$1, description=$2, discount_type=$3, discount_value=$4, enabled=$5, updated_at=CURRENT_TIMESTAMP
       WHERE id=$6
       RETURNING id, title, description, discount_type, discount_value, enabled, created_at, updated_at
-    `, [title, description, discount_type, discount_value, enabled, req.params.id]);
+    `,
+      [
+        title,
+        description,
+        discount_type,
+        discount_value,
+        enabled,
+        req.params.id,
+      ],
+    );
     invalidateResourceCache("admin:offers");
     invalidateDashboardCache();
     res.json({ success: true, data: result.rows[0] });
@@ -392,7 +524,9 @@ const updateOffer = async (req, res) => {
 const deleteOffer = async (req, res) => {
   try {
     await ensureAdminTables();
-    await runQuery("deleteOffer", "DELETE FROM offers WHERE id=$1", [req.params.id]);
+    await runQuery("deleteOffer", "DELETE FROM offers WHERE id=$1", [
+      req.params.id,
+    ]);
     invalidateResourceCache("admin:offers");
     invalidateDashboardCache();
     res.json({ success: true, message: "Offer deleted successfully" });
@@ -408,16 +542,21 @@ const getRestaurant = async (req, res) => {
     const cached = getResourceCache("admin:restaurant");
     if (cached) return res.json({ success: true, data: cached });
 
-    const result = await runQuery("getRestaurant", `
+    const result = await runQuery(
+      "getRestaurant",
+      `
       SELECT id, name, logo_url, banner_url, contact_number, address, delivery_charge,
              opening_time, closing_time, is_accepting_orders, updated_at
       FROM restaurant_settings WHERE id=1
-    `);
+    `,
+    );
     setResourceCache("admin:restaurant", result.rows[0]);
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error("[adminController] getRestaurant failed", error);
-    res.status(502).json({ success: false, message: "Failed to load restaurant settings" });
+    res
+      .status(502)
+      .json({ success: false, message: "Failed to load restaurant settings" });
   }
 };
 
@@ -425,25 +564,52 @@ const updateRestaurant = async (req, res) => {
   try {
     await ensureAdminTables();
     const {
-      name, logo_url, banner_url, contact_number, address,
-      delivery_charge, opening_time, closing_time, is_accepting_orders = true,
+      name,
+      logo_url,
+      banner_url,
+      contact_number,
+      address,
+      gst_percentage,
+      delivery_radius,
+      delivery_charge,
+      opening_time,
+      closing_time,
+      is_accepting_orders = true,
     } = req.body;
 
-    const result = await runQuery("updateRestaurant", `
+    const result = await runQuery(
+      "updateRestaurant",
+      `
       UPDATE restaurant_settings
       SET name=$1, logo_url=$2, banner_url=$3, contact_number=$4, address=$5,
           delivery_charge=$6, opening_time=$7, closing_time=$8,
-          is_accepting_orders=$9, updated_at=CURRENT_TIMESTAMP
+          is_accepting_orders=$9, gst=$10, deliveryRadiusKm=$11,
+          updated_at=CURRENT_TIMESTAMP
       WHERE id=1
-      RETURNING id, name, logo_url, banner_url, contact_number, address, delivery_charge, opening_time, closing_time, is_accepting_orders, updated_at
-    `, [name, logo_url, banner_url, contact_number, address, delivery_charge, opening_time, closing_time, is_accepting_orders]);
+      RETURNING id, name, logo_url, banner_url, contact_number, address, delivery_charge, opening_time, closing_time, is_accepting_orders, gst_percentage,delivery_radius updated_at
+    `,
+      [
+        name,
+        logo_url,
+        banner_url,
+        contact_number,
+        address,
+        delivery_charge,
+        opening_time,
+        closing_time,
+        is_accepting_orders,
+      ],
+    );
 
     invalidateResourceCache("admin:restaurant");
     invalidateDashboardCache();
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error("[adminController] updateRestaurant failed", error);
-    res.status(502).json({ success: false, message: "Failed to update restaurant settings" });
+    res.status(502).json({
+      success: false,
+      message: "Failed to update restaurant settings",
+    });
   }
 };
 
@@ -453,12 +619,17 @@ const getCategories = async (req, res) => {
     const cached = getResourceCache("admin:categories");
     if (cached) return res.json({ success: true, data: cached });
 
-    const result = await runQuery("getCategories", "SELECT id, name, created_at, updated_at FROM menu_categories ORDER BY name ASC");
+    const result = await runQuery(
+      "getCategories",
+      "SELECT id, name, created_at, updated_at FROM menu_categories ORDER BY name ASC",
+    );
     setResourceCache("admin:categories", result.rows);
     res.json({ success: true, data: result.rows });
   } catch (error) {
     console.error("[adminController] getCategories failed", error);
-    res.status(502).json({ success: false, message: "Failed to load categories" });
+    res
+      .status(502)
+      .json({ success: false, message: "Failed to load categories" });
   }
 };
 
@@ -475,7 +646,9 @@ const createCategory = async (req, res) => {
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error("[adminController] createCategory failed", error);
-    res.status(502).json({ success: false, message: "Failed to create category" });
+    res
+      .status(502)
+      .json({ success: false, message: "Failed to create category" });
   }
 };
 
@@ -492,20 +665,28 @@ const updateCategory = async (req, res) => {
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error("[adminController] updateCategory failed", error);
-    res.status(502).json({ success: false, message: "Failed to update category" });
+    res
+      .status(502)
+      .json({ success: false, message: "Failed to update category" });
   }
 };
 
 const deleteCategory = async (req, res) => {
   try {
     await ensureAdminTables();
-    await runQuery("deleteCategory", "DELETE FROM menu_categories WHERE id=$1", [req.params.id]);
+    await runQuery(
+      "deleteCategory",
+      "DELETE FROM menu_categories WHERE id=$1",
+      [req.params.id],
+    );
     invalidateResourceCache("admin:categories");
     invalidateDashboardCache();
     res.json({ success: true, message: "Category deleted successfully" });
   } catch (error) {
     console.error("[adminController] deleteCategory failed", error);
-    res.status(502).json({ success: false, message: "Failed to delete category" });
+    res
+      .status(502)
+      .json({ success: false, message: "Failed to delete category" });
   }
 };
 
@@ -516,28 +697,48 @@ const updateProfile = async (req, res) => {
     const finalPicture = picture;
 
     if (newPassword) {
-      const user = await runQuery("updateProfile fetch current password", "SELECT password FROM users WHERE id=$1", [req.user.id]);
+      const user = await runQuery(
+        "updateProfile fetch current password",
+        "SELECT password FROM users WHERE id=$1",
+        [req.user.id],
+      );
       const hasPassword = Boolean(user.rows[0]?.password);
       if (hasPassword) {
-        const matches = await bcrypt.compare(currentPassword || "", user.rows[0].password);
+        const matches = await bcrypt.compare(
+          currentPassword || "",
+          user.rows[0].password,
+        );
         if (!matches) {
-          return res.status(400).json({ success: false, message: "Current password is incorrect" });
+          return res
+            .status(400)
+            .json({ success: false, message: "Current password is incorrect" });
         }
       }
       const hashedPassword = await bcrypt.hash(newPassword, 10);
-      await runQuery("updateProfile set password", "UPDATE users SET password=$1 WHERE id=$2", [hashedPassword, req.user.id]);
+      await runQuery(
+        "updateProfile set password",
+        "UPDATE users SET password=$1 WHERE id=$2",
+        [hashedPassword, req.user.id],
+      );
     }
 
     const result = await runQuery(
       "updateProfile",
       "UPDATE users SET name=$1, phone=$2, picture=$3 WHERE id=$4 RETURNING id, name, email, phone, picture, role",
-      [name || req.user.name, phone || req.user.phone, finalPicture || req.user.picture, req.user.id],
+      [
+        name || req.user.name,
+        phone || req.user.phone,
+        finalPicture || req.user.picture,
+        req.user.id,
+      ],
     );
 
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error("[adminController] updateProfile failed", error);
-    res.status(502).json({ success: false, message: "Failed to update profile" });
+    res
+      .status(502)
+      .json({ success: false, message: "Failed to update profile" });
   }
 };
 

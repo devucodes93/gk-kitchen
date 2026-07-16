@@ -11,7 +11,10 @@ import {
   writeCartToStorage,
 } from "../../utils/cartStorage";
 import "./OrderScreen.css";
-
+import {
+  getReliableLocation,
+  LOW_ACCURACY_THRESHOLD_M,
+} from "../../utils/geolocation";
 // TODO: replace with your real backend path
 const ORDER_API_ENDPOINT =
   "https://gk-kitchen.onrender.com/api/orders/place-order";
@@ -120,6 +123,16 @@ const Spinner = () => (
   </svg>
 );
 
+const EARTH_RADIUS_KM = 6371;
+const getHaversineKm = (lat1, lon1, lat2, lon2) => {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 const OrderScreen = ({
   item,
   onClose,
@@ -157,6 +170,7 @@ const OrderScreen = ({
   const [isEditingPhone, setIsEditingPhone] = useState(false);
   const [phoneError, setPhoneError] = useState("");
   const [pastOrders, setPastOrders] = useState([]);
+  const [locationError, setLocationError] = useState("");
 
   // --- Duplicate-submission / integrity guards ---------------------------
   // submitLockRef is a *synchronous* lock. React state updates (like
@@ -255,8 +269,24 @@ const OrderScreen = ({
   // True once we know the customer is farther than the delivery radius.
   // `distanceKm` is null until MenuPage resolves the browser location, so
   // this stays false (not blocked) until we actually know better.
+  // Real-time distance from the ACTUAL selected delivery pin, not the
+  // customer's one-time page-load location. This is what must gate
+  // placing the order — `distanceKm` (prop) is only used for the fee
+  // estimate shown before a pin is even chosen.
+  const selectedDistanceKm = useMemo(() => {
+    if (!location) return null;
+    return getHaversineKm(
+      RESTAURANT_LOCATION[0],
+      RESTAURANT_LOCATION[1],
+      location.lat,
+      location.lng,
+    );
+  }, [location]);
+
+  const effectiveDistanceKm = selectedDistanceKm ?? distanceKm;
+
   const outOfDeliveryZone =
-    distanceKm !== null && distanceKm > deliveryRadiusKm;
+    effectiveDistanceKm !== null && effectiveDistanceKm > deliveryRadiusKm;
 
   // If addons that were previously selected are no longer part of the
   // active cart (e.g. the item that offered them was removed), drop them so
@@ -541,19 +571,22 @@ const OrderScreen = ({
     });
   };
 
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) return;
+  const handleUseCurrentLocation = async () => {
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const address = await getAddressFromCoords(latitude, longitude);
-        updateLocation({ lat: latitude, lng: longitude, address });
-        setLocating(false);
-      },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 8000 },
-    );
+    try {
+      const { lat, lng, accuracy } = await getReliableLocation();
+      const address = await getAddressFromCoords(lat, lng);
+      updateLocation({ lat, lng, address });
+      setLocationError(
+        accuracy > LOW_ACCURACY_THRESHOLD_M
+          ? `Location may be inaccurate (±${Math.round(accuracy)}m). Please check the pin on the map below.`
+          : "",
+      );
+    } catch (err) {
+      setLocationError(err.message);
+    } finally {
+      setLocating(false);
+    }
   };
 
   const handleContinueToDelivery = () => {
@@ -563,13 +596,13 @@ const OrderScreen = ({
   const handleBackToReview = () => {
     setCheckoutStep("review");
   };
-
   const handlePlaceOrder = async () => {
     // 1. Synchronous re-entrancy guard — closes the race a state-only check
     //    can't close (see comment on submitLockRef above).
     if (submitLockRef.current) return;
 
     if (!location) return;
+
     if (outOfDeliveryZone) return;
 
     // 2. Fail fast if we're offline — no point burning a request/timeout.
@@ -607,8 +640,25 @@ const OrderScreen = ({
     }
 
     // 5. Location sanity check (not null/garbage/out-of-range).
+
     if (!isValidLocation(location)) {
       setErrorMessage("Please select a valid delivery location on the map.");
+      setStatus("error");
+      return;
+    }
+
+    // Re-check the ACTUAL selected pin against the delivery radius — never
+    // trust a distance computed before the pin was chosen.
+    const finalDistanceKm = getHaversineKm(
+      RESTAURANT_LOCATION[0],
+      RESTAURANT_LOCATION[1],
+      location.lat,
+      location.lng,
+    );
+    if (finalDistanceKm > deliveryRadiusKm) {
+      setErrorMessage(
+        `Sorry, this delivery point is about ${finalDistanceKm.toFixed(1)} km away, outside our ${deliveryRadiusKm} km delivery area.`,
+      );
       setStatus("error");
       return;
     }
@@ -757,7 +807,9 @@ const OrderScreen = ({
       <div className="order-price-row">
         <span>
           Delivery fee
-          {distanceKm !== null ? ` (${distanceKm.toFixed(1)} km)` : ""}
+          {effectiveDistanceKm !== null
+            ? ` (${effectiveDistanceKm.toFixed(1)} km)`
+            : ""}
         </span>
         <span>
           ₹{deliveryFee.toFixed ? deliveryFee.toFixed(2) : deliveryFee}
@@ -780,9 +832,9 @@ const OrderScreen = ({
     outOfDeliveryZone && (
       <div className="order-block">
         <p className="order-error-text">
-          Sorry, you're about {distanceKm.toFixed(1)} km away and we currently
-          only deliver within {deliveryRadiusKm} km. We're not available at your
-          location yet.
+          Sorry, you're about {effectiveDistanceKm.toFixed(1)} km away and we
+          currently only deliver within {deliveryRadiusKm} km. We're not
+          available at your location yet.
         </p>
       </div>
     );
@@ -1198,6 +1250,9 @@ const OrderScreen = ({
 
       <div className="order-block">
         <p className="order-block-label">Deliver to</p>
+        {locationError && (
+          <p className="order-error-text">{locationError}</p>
+        )}{" "}
         <div className="order-location-card">
           <span className="order-location-pin">📍</span>
           <div className="order-location-text">
@@ -1224,7 +1279,6 @@ const OrderScreen = ({
             </button>
           </div>
         </div>
-
         <div className="order-location-toolbar">
           <span className="order-location-toolbar-label">
             Select location on map
@@ -1233,10 +1287,10 @@ const OrderScreen = ({
             Tap the map to place your drop point.
           </span>
         </div>
-
         <LocationMap
           onLocationSelect={updateLocation}
           restaurantLocation={RESTAURANT_LOCATION}
+          selectedLocation={location}
         />
         <p className="order-map-hint">Tap to select your delivery location</p>
       </div>

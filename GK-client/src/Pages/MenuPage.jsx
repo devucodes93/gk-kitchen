@@ -988,37 +988,6 @@ const MenuPage = () => {
           restaurant config) are actually factored in. Once ready, only the
           final "to pay" number is shown, not the individual line items.
         */}
-        {cart.length > 0 && (
-          <div
-            className="menu-page-cost-summary"
-            style={{
-              maxWidth: 420,
-              margin: "16px auto 0",
-              padding: "14px 18px",
-              borderRadius: 12,
-              background: "var(--gk-surface, #fff)",
-              boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-              fontSize: 14,
-            }}
-          >
-            {pricingReady ? (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontWeight: 700,
-                }}
-              >
-                <span>Total (incl. delivery &amp; GST)</span>
-                <span>₹{orderTotal.toFixed(2)}</span>
-              </div>
-            ) : (
-              <div style={{ color: "var(--gk-muted, #888)" }}>
-                Calculating delivery fee and GST…
-              </div>
-            )}
-          </div>
-        )}
 
         <button
           type="button"

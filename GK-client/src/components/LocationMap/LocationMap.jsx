@@ -13,7 +13,10 @@ import {
   DEMO_DELIVERY_LOCATION,
 } from "../../constants/restaurant";
 import "leaflet/dist/leaflet.css";
-
+import {
+  getReliableLocation,
+  LOW_ACCURACY_THRESHOLD_M,
+} from "../../utils/geolocation";
 const RESTAURANT_NAME = "Gautam Kitchen";
 
 async function getAddressFromCoords(lat, lng) {
@@ -202,17 +205,38 @@ const zoomBtnStyle = {
 
 export default function LocationMap({
   onLocationSelect,
+  selectedLocation,
   defaultLocation = null,
   restaurantLocation = RESTAURANT_LOCATION,
   height = 300, // px fallback — always applied inline so a missing parent height can't hide the map
 }) {
-  const [userLocation, setUserLocation] = useState(defaultLocation);
+  const [userLocation, setUserLocation] = useState(
+    selectedLocation
+      ? [selectedLocation.lat, selectedLocation.lng]
+      : defaultLocation,
+  );
+  const [locationError, setLocationError] = useState("");
   const [userAddress, setUserAddress] = useState("");
   const [isGeolocating, setIsGeolocating] = useState(!defaultLocation);
   const [isResolvingTap, setIsResolvingTap] = useState(false);
   const [routeCoords, setRouteCoords] = useState(null); // actual road path, [[lat,lng], ...]
   const [routeDistanceKm, setRouteDistanceKm] = useState(null);
+  useEffect(() => {
+    if (!selectedLocation) return;
 
+    setUserLocation([selectedLocation.lat, selectedLocation.lng]);
+  }, [selectedLocation]);
+  function ChangeView({ center }) {
+    const map = useMap();
+
+    useEffect(() => {
+      map.flyTo(center, map.getZoom(), {
+        animate: true,
+      });
+    }, [center, map]);
+
+    return null;
+  }
   // Reports the selected point back to the parent in the shape it expects:
   // { lat, lng, address }. (Previously this sent userLat/userLng/userAddress,
   // which didn't match what OrderScreen reads, so selections were silently
@@ -222,27 +246,28 @@ export default function LocationMap({
   };
 
   useEffect(() => {
-    if (!defaultLocation && navigator.geolocation) {
-      setIsGeolocating(true);
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          setUserLocation([latitude, longitude]);
-
-          const userAddr = await getAddressFromCoords(latitude, longitude);
-          setUserAddress(userAddr);
-          reportLocation(latitude, longitude, userAddr);
-          setIsGeolocating(false);
-        },
-        (error) => {
-          console.warn("Geolocation error:", error);
-          setUserLocation(restaurantLocation);
-          setUserAddress("Location unavailable");
-          setIsGeolocating(false);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-      );
-    }
+    if (defaultLocation) return;
+    setIsGeolocating(true);
+    getReliableLocation()
+      .then(async ({ lat, lng, accuracy }) => {
+        setUserLocation([lat, lng]);
+        const userAddr = await getAddressFromCoords(lat, lng);
+        setUserAddress(userAddr);
+        reportLocation(lat, lng, userAddr);
+        if (accuracy > LOW_ACCURACY_THRESHOLD_M) {
+          setLocationError(
+            `Location may be inaccurate (±${Math.round(accuracy)}m). Please check the pin and tap the map to correct it if needed.`,
+          );
+        } else {
+          setLocationError("");
+        }
+      })
+      .catch((err) => {
+        setLocationError(err.message);
+        setUserLocation(null); // don't silently drop the pin on the restaurant
+        setUserAddress("");
+      })
+      .finally(() => setIsGeolocating(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultLocation]);
 
@@ -257,26 +282,34 @@ export default function LocationMap({
     reportLocation(lat, lng, address);
   };
 
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) return;
+  const handleUseCurrentLocation = async () => {
     setIsGeolocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserLocation([latitude, longitude]);
-        const address = await getAddressFromCoords(latitude, longitude);
-        setUserAddress(address);
-        reportLocation(latitude, longitude, address);
-        setIsGeolocating(false);
-      },
-      (error) => {
-        console.warn("Geolocation error:", error);
-        setIsGeolocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-    );
-  };
 
+    // Clear the old manually selected pin
+    setUserLocation(null);
+    setRouteCoords(null);
+    setRouteDistanceKm(null);
+
+    try {
+      const { lat, lng, accuracy } = await getReliableLocation();
+
+      const newLocation = [lat, lng];
+      setUserLocation(newLocation);
+
+      const address = await getAddressFromCoords(lat, lng);
+      setUserAddress(address);
+
+      reportLocation(lat, lng, address);
+
+      setLocationError(
+        accuracy > LOW_ACCURACY_THRESHOLD_M
+          ? `Location may be inaccurate (±${Math.round(accuracy)}m).`
+          : "",
+      );
+    } finally {
+      setIsGeolocating(false);
+    }
+  };
   useEffect(() => {
     if (!userLocation) return;
     let cancelled = false;
@@ -432,7 +465,26 @@ export default function LocationMap({
               }${userAddress ? ` · ${userAddress.split(",")[0]}` : ""}`}
         </p>
       )}
-
+      {locationError && (
+        <p
+          style={{
+            position: "absolute",
+            bottom: 54,
+            left: 14,
+            right: 14,
+            zIndex: 1000, // was 5 — Leaflet's panes go up to ~700
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#fff",
+            background: "rgba(214,60,60,0.92)",
+            padding: "6px 10px",
+            borderRadius: 8,
+            margin: 0,
+          }}
+        >
+          {locationError} Tap anywhere on the map to set it manually.
+        </p>
+      )}
       <button
         type="button"
         onClick={handleUseCurrentLocation}
