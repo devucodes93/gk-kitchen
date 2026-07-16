@@ -563,7 +563,6 @@ const getRestaurant = async (req, res) => {
 const updateRestaurant = async (req, res) => {
   try {
     await ensureAdminTables();
-
     const {
       name,
       logo_url,
