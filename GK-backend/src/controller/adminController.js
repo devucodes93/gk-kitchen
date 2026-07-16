@@ -563,6 +563,7 @@ const getRestaurant = async (req, res) => {
 const updateRestaurant = async (req, res) => {
   try {
     await ensureAdminTables();
+
     const {
       name,
       logo_url,
@@ -581,13 +582,35 @@ const updateRestaurant = async (req, res) => {
       "updateRestaurant",
       `
       UPDATE restaurant_settings
-      SET name=$1, logo_url=$2, banner_url=$3, contact_number=$4, address=$5,
-          delivery_charge=$6, opening_time=$7, closing_time=$8,
-          is_accepting_orders=$9, gst=$10, deliveryRadiusKm=$11,
-          updated_at=CURRENT_TIMESTAMP
-      WHERE id=1
-      RETURNING id, name, logo_url, banner_url, contact_number, address, delivery_charge, opening_time, closing_time, is_accepting_orders, gst_percentage,delivery_radius updated_at
-    `,
+      SET
+        name = $1,
+        logo_url = $2,
+        banner_url = $3,
+        contact_number = $4,
+        address = $5,
+        delivery_charge = $6,
+        opening_time = $7,
+        closing_time = $8,
+        is_accepting_orders = $9,
+        gst = $10,
+        deliveryRadiusKm = $11,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = 1
+      RETURNING
+        id,
+        name,
+        logo_url,
+        banner_url,
+        contact_number,
+        address,
+        gst,
+        deliveryRadiusKm,
+        delivery_charge,
+        opening_time,
+        closing_time,
+        is_accepting_orders,
+        updated_at
+      `,
       [
         name,
         logo_url,
@@ -598,21 +621,34 @@ const updateRestaurant = async (req, res) => {
         opening_time,
         closing_time,
         is_accepting_orders,
+        gst_percentage,
+        delivery_radius,
       ],
     );
 
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Restaurant settings not found",
+      });
+    }
+
     invalidateResourceCache("admin:restaurant");
-    invalidateDashboardCache();
-    res.json({ success: true, data: result.rows[0] });
+
+    res.json({
+      success: true,
+      data: result.rows[0],
+    });
   } catch (error) {
-    console.error("[adminController] updateRestaurant failed", error);
-    res.status(502).json({
+    console.error("[adminController] updateRestaurant failed:", error);
+
+    res.status(500).json({
       success: false,
       message: "Failed to update restaurant settings",
+      error: error.message, // Remove in production
     });
   }
 };
-
 const getCategories = async (req, res) => {
   try {
     await ensureAdminTables();
