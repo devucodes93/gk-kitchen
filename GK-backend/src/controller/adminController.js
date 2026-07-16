@@ -406,7 +406,7 @@ const getCustomers = async (req, res) => {
         `
         SELECT id, name, email, phone, picture FROM users ORDER BY id DESC
       `,
-      ),
+    ),
       runQuery(
         "getCustomers order totals",
         `
