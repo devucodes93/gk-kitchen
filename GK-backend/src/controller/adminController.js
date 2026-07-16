@@ -64,6 +64,8 @@ const ensureAdminTables = async () => {
         banner_url TEXT,
         contact_number VARCHAR(40),
         address TEXT,
+        gst NUMERIC DEFAULT 0,
+        "deliveryRadiusKm" NUMERIC DEFAULT 0,
         delivery_charge NUMERIC DEFAULT 0,
         opening_time VARCHAR(20),
         closing_time VARCHAR(20),
@@ -72,9 +74,25 @@ const ensureAdminTables = async () => {
       )`,
     );
 
+    // Add columns if they don't exist (for existing databases)
+    await runQuery(
+      "alter restaurant_settings",
+      `
+      ALTER TABLE restaurant_settings
+      ADD COLUMN IF NOT EXISTS gst NUMERIC DEFAULT 0;
+
+      ALTER TABLE restaurant_settings
+      ADD COLUMN IF NOT EXISTS "deliveryRadiusKm" NUMERIC DEFAULT 0;
+      `,
+    );
+
     await runQuery(
       "ensure default restaurant settings",
-      `INSERT INTO restaurant_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING`,
+      `
+      INSERT INTO restaurant_settings (id)
+      VALUES (1)
+      ON CONFLICT (id) DO NOTHING;
+      `,
     );
 
     await runQuery(
@@ -89,11 +107,22 @@ const ensureAdminTables = async () => {
 
     await runQuery(
       "create dashboard indexes",
-      `CREATE INDEX IF NOT EXISTS idx_orders_created_at_desc ON orders (created_at DESC);
-       CREATE INDEX IF NOT EXISTS idx_orders_status_created_at ON orders (status, created_at DESC);
-       CREATE INDEX IF NOT EXISTS idx_orders_user_id_created_at ON orders (user_id, created_at DESC);
-       CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
-       CREATE INDEX IF NOT EXISTS idx_menu_category ON menu (category);`,
+      `
+      CREATE INDEX IF NOT EXISTS idx_orders_created_at_desc
+      ON orders (created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_orders_status_created_at
+      ON orders (status, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_orders_user_id_created_at
+      ON orders (user_id, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_users_role
+      ON users (role);
+
+      CREATE INDEX IF NOT EXISTS idx_menu_category
+      ON menu (category);
+      `,
     );
 
     adminSchemaReady = true;
@@ -103,7 +132,6 @@ const ensureAdminTables = async () => {
 
   return adminSchemaPromise;
 };
-
 const buildDashboardPayload = async () => {
   const [
     revenue,
