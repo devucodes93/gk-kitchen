@@ -1391,7 +1391,7 @@ const AdminDashboard = () => {
             onChange={(e) =>
               setRestaurant({
                 ...restaurant,
-                gst_percentage: Number(e.target.value),
+                gst: Number(e.target.value),
               })
             }
           />
@@ -1407,7 +1407,7 @@ const AdminDashboard = () => {
             onChange={(e) =>
               setRestaurant({
                 ...restaurant,
-                delivery_radius: Number(e.target.value),
+                deliveryRadiusKm: Number(e.target.value),
               })
             }
           />
