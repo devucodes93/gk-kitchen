@@ -348,9 +348,22 @@ const getBootstrap = async (req, res) => {
           : runQuery(
               "bootstrap restaurant",
               `
-        SELECT id, name, logo_url, banner_url, contact_number, address, delivery_charge,
-               opening_time, closing_time, is_accepting_orders, updated_at
-        FROM restaurant_settings WHERE id=1
+       SELECT
+  id,
+  name,
+  logo_url,
+  banner_url,
+  contact_number,
+  address,
+  gst,
+  "deliveryRadiusKm" AS "deliveryRadiusKm",
+  delivery_charge,
+  opening_time,
+  closing_time,
+  is_accepting_orders,
+  updated_at
+FROM restaurant_settings
+WHERE id=1;
       `,
             ).then((result) => {
               const restaurantRow = result.rows[0];
@@ -573,9 +586,22 @@ const getRestaurant = async (req, res) => {
     const result = await runQuery(
       "getRestaurant",
       `
-      SELECT id, name, logo_url, banner_url, contact_number, address, delivery_charge,
-             opening_time, closing_time, is_accepting_orders, updated_at
-      FROM restaurant_settings WHERE id=1
+     SELECT
+  id,
+  name,
+  logo_url,
+  banner_url,
+  contact_number,
+  address,
+  gst,
+  "deliveryRadiusKm" AS "deliveryRadiusKm",
+  delivery_charge,
+  opening_time,
+  closing_time,
+  is_accepting_orders,
+  updated_at
+FROM restaurant_settings
+WHERE id=1;
     `,
     );
     setResourceCache("admin:restaurant", result.rows[0]);
