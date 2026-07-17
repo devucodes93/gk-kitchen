@@ -16,6 +16,7 @@ const menueRoutes = require("./src/routes/menuRoutes.js")
 const adminRoutes = require("./src/routes/adminRoutes.js")
 const riderRoutes = require("./src/routes/riderRoutes.js")
 const restaurantRoutes = require("./src/routes/restaurantRoutes.js")
+const paymentRoutes = require("./src/routes/paymentRoutes.js")
 const { ensureUserColumns } = require("./src/controller/signupController.js")
 
 const app = express();
@@ -50,6 +51,7 @@ app.use(passport.initialize());
 app.use("/api/auth", SignupRoute);   // POST /api/auth/register, POST /api/auth/login
 app.use("/api/auth", userRoutes);       // GET  /api/auth/google, GET /api/auth/google/callback
 app.use("/api/orders", orderRoutes);
+app.use("/api/payment", paymentRoutes);
 
 app.use("/api/menu", menueRoutes);
 app.use("/api/admin", adminRoutes);

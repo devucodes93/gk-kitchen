@@ -337,13 +337,8 @@ const AdminDashboard = () => {
         setLoading(false);
       }
     },
-<<<<<<< HEAD
-    [showToast], // add any other outer-scope values it reads: setAdminTokenForRequest, setLoading, setNeedsAdminLogin, VIEW_FETCHERS
-  );// include loadView now
-=======
     [showToast],
   );
->>>>>>> c6d7accacef009fe61131b1b49121700d1506a36
 
   // initial + tab-change load (only fetches if that tab hasn't loaded yet)
   useEffect(() => {

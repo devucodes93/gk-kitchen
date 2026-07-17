@@ -1,7 +1,8 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "https://gk-kitchen.onrender.com/api",
+  baseURL:
+    process.env.REACT_APP_API_BASE_URL || "https://gk-kitchen.onrender.com/api",
 });
 
 API.interceptors.request.use((config) => {
