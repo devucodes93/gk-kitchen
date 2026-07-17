@@ -31,15 +31,19 @@ const createUser = async (req, res) => {
     const { name, email, phone, birthday, favDish, password } = req.body;
 
     if (!name || !email || !password) {
-      return res.status(400).json({ success: false, message: "name, email and password are required" });
+      return res.status(400).json({
+        success: false,
+        message: "name, email and password are required",
+      });
     }
 
-    const existing = await pool.query(
-      "SELECT id FROM users WHERE email = $1",
-      [email]
-    );
+    const existing = await pool.query("SELECT id FROM users WHERE email = $1", [
+      email,
+    ]);
     if (existing.rows.length > 0) {
-      return res.status(409).json({ success: false, message: "Email already registered" });
+      return res
+        .status(409)
+        .json({ success: false, message: "Email already registered" });
     }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
@@ -48,10 +52,14 @@ const createUser = async (req, res) => {
       `INSERT INTO users (name, email, phone, birthday, fav_dish, password)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, name, email, phone, birthday, fav_dish`,
-      [name, email, phone, birthday, favDish, hashedPassword]
+      [name, email, phone, birthday, favDish, hashedPassword],
     );
 
-    res.status(201).json({ success: true, message: "User created successfully", user: result.rows[0] });
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      user: result.rows[0],
+    });
   } catch (error) {
     console.error("createUser error:", error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -64,29 +72,39 @@ const loginUser = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: "email and password are required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "email and password are required" });
     }
 
-    const result = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
-      [email]
-    );
+    const result = await pool.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: "Invalid email or password" });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid email or password" });
     }
 
     const user = result.rows[0];
     const match = await bcrypt.compare(password, user.password);
 
     if (!match) {
-      return res.status(401).json({ success: false, message: "Invalid email or password" });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid email or password" });
     }
 
     const token = signUserToken(user);
 
     const { password: _, ...safeUser } = user; // strip password from response
-    res.status(200).json({ success: true, message: "Login successful", user: safeUser, token });
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      user: safeUser,
+      token,
+    });
   } catch (error) {
     console.error("loginUser error:", error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -99,12 +117,18 @@ const adminLogin = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: "email and password are required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "email and password are required" });
     }
 
-    const adminCount = await pool.query("SELECT COUNT(*) FROM users WHERE role = 'admin'");
+    const adminCount = await pool.query(
+      "SELECT COUNT(*) FROM users WHERE role = 'admin'",
+    );
     const hasAdmin = Number(adminCount.rows[0].count) > 0;
-    let result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    let result = await pool.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
 
     if (!hasAdmin && result.rows.length === 0) {
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
@@ -126,17 +150,23 @@ const adminLogin = async (req, res) => {
     }
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: "Invalid admin email or password" });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid admin email or password" });
     }
 
     const user = result.rows[0];
     if (user.role !== "admin") {
-      return res.status(403).json({ success: false, message: "This account is not an admin" });
+      return res
+        .status(403)
+        .json({ success: false, message: "This account is not an admin" });
     }
 
     const match = await bcrypt.compare(password, user.password || "");
     if (!match) {
-      return res.status(401).json({ success: false, message: "Invalid admin email or password" });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid admin email or password" });
     }
 
     const { password: _, ...safeUser } = user;
@@ -155,15 +185,39 @@ const adminLogin = async (req, res) => {
 const riderLogin = async (req, res) => {
   try {
     await ensureUserColumns();
-    const { email, password, name } = req.body;
+
+    const { email, password, name, access_code } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: "email and password are required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "email and password are required" });
     }
 
-    let result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    let result = await pool.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
 
+    // Brand new rider account -> must supply the current restaurant access code
     if (result.rows.length === 0) {
+      if (!access_code) {
+        return res.status(403).json({
+          success: false,
+          message: "An access code from your restaurant admin is required",
+        });
+      }
+
+      const settingsResult = await pool.query(
+        "SELECT rider_access_code FROM restaurant_settings LIMIT 1",
+      );
+      const currentCode = settingsResult.rows[0]?.rider_access_code;
+
+      if (!currentCode || access_code !== currentCode) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Invalid access code" });
+      }
+
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
       result = await pool.query(
         `INSERT INTO users (name, email, password, role)
@@ -175,18 +229,23 @@ const riderLogin = async (req, res) => {
 
     const user = result.rows[0];
     if (user.role !== "rider" && user.role !== "admin") {
-      return res.status(403).json({ success: false, message: "This account is not a rider" });
+      return res
+        .status(403)
+        .json({ success: false, message: "This account is not a rider" });
     }
 
     const match = await bcrypt.compare(password, user.password || "");
     if (!match) {
-      return res.status(401).json({ success: false, message: "Invalid rider email or password" });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid rider email or password" });
     }
 
     const { password: _, ...safeUser } = user;
     res.json({
       success: true,
-      message: result.rows[0].role === "rider" ? "Rider login successful" : "Admin rider access",
+      message:
+        user.role === "rider" ? "Rider login successful" : "Admin rider access",
       user: safeUser,
       token: signUserToken(user),
     });
@@ -196,4 +255,11 @@ const riderLogin = async (req, res) => {
   }
 };
 
-module.exports = { createUser, loginUser, adminLogin, riderLogin, ensureUserColumns, signUserToken };
+module.exports = {
+  createUser,
+  loginUser,
+  adminLogin,
+  riderLogin,
+  ensureUserColumns,
+  signUserToken,
+};

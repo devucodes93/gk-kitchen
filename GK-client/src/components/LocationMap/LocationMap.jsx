@@ -13,7 +13,10 @@ import {
   DEMO_DELIVERY_LOCATION,
 } from "../../constants/restaurant";
 import "leaflet/dist/leaflet.css";
-
+import {
+  getReliableLocation,
+  LOW_ACCURACY_THRESHOLD_M,
+} from "../../utils/geolocation";
 const RESTAURANT_NAME = "Gautam Kitchen";
 
 async function getAddressFromCoords(lat, lng) {
@@ -202,16 +205,34 @@ const zoomBtnStyle = {
 
 export default function LocationMap({
   onLocationSelect,
+  selectedLocation,
   defaultLocation = null,
   restaurantLocation = RESTAURANT_LOCATION,
   height = 300, // px fallback — always applied inline so a missing parent height can't hide the map
+  // Read-only mode: used to embed a customer's already-saved order location
+  // in the admin dashboard. Skips browser geolocation entirely, disables
+  // tap-to-move-pin, and hides the "use current location" control — the
+  // admin is viewing a fixed delivery point, not choosing one.
+  readOnly = false,
 }) {
-  const [userLocation, setUserLocation] = useState(defaultLocation);
+  const [userLocation, setUserLocation] = useState(
+    selectedLocation
+      ? [selectedLocation.lat, selectedLocation.lng]
+      : defaultLocation,
+  );
+  const [locationError, setLocationError] = useState("");
   const [userAddress, setUserAddress] = useState("");
-  const [isGeolocating, setIsGeolocating] = useState(!defaultLocation);
+  const [isGeolocating, setIsGeolocating] = useState(
+    !defaultLocation && !readOnly,
+  );
   const [isResolvingTap, setIsResolvingTap] = useState(false);
   const [routeCoords, setRouteCoords] = useState(null); // actual road path, [[lat,lng], ...]
   const [routeDistanceKm, setRouteDistanceKm] = useState(null);
+  useEffect(() => {
+    if (!selectedLocation) return;
+
+    setUserLocation([selectedLocation.lat, selectedLocation.lng]);
+  }, [selectedLocation]);
 
   // Reports the selected point back to the parent in the shape it expects:
   // { lat, lng, address }. (Previously this sent userLat/userLng/userAddress,
@@ -222,32 +243,34 @@ export default function LocationMap({
   };
 
   useEffect(() => {
-    if (!defaultLocation && navigator.geolocation) {
-      setIsGeolocating(true);
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          setUserLocation([latitude, longitude]);
-
-          const userAddr = await getAddressFromCoords(latitude, longitude);
-          setUserAddress(userAddr);
-          reportLocation(latitude, longitude, userAddr);
-          setIsGeolocating(false);
-        },
-        (error) => {
-          console.warn("Geolocation error:", error);
-          setUserLocation(restaurantLocation);
-          setUserAddress("Location unavailable");
-          setIsGeolocating(false);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-      );
-    }
+    if (defaultLocation || readOnly) return; // read-only views never ask for browser geolocation
+    setIsGeolocating(true);
+    getReliableLocation()
+      .then(async ({ lat, lng, accuracy }) => {
+        setUserLocation([lat, lng]);
+        const userAddr = await getAddressFromCoords(lat, lng);
+        setUserAddress(userAddr);
+        reportLocation(lat, lng, userAddr);
+        if (accuracy > LOW_ACCURACY_THRESHOLD_M) {
+          setLocationError(
+            `Location may be inaccurate (±${Math.round(accuracy)}m). Please check the pin and tap the map to correct it if needed.`,
+          );
+        } else {
+          setLocationError("");
+        }
+      })
+      .catch((err) => {
+        setLocationError(err.message);
+        setUserLocation(null); // don't silently drop the pin on the restaurant
+        setUserAddress("");
+      })
+      .finally(() => setIsGeolocating(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultLocation]);
+  }, [defaultLocation, readOnly]);
 
   // Called when the person taps/clicks the map to drop their own pin.
   const handleMapClick = async (lat, lng) => {
+    if (readOnly) return;
     setUserLocation([lat, lng]);
     setIsGeolocating(false);
     setIsResolvingTap(true);
@@ -257,26 +280,35 @@ export default function LocationMap({
     reportLocation(lat, lng, address);
   };
 
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) return;
+  const handleUseCurrentLocation = async () => {
+    if (readOnly) return;
     setIsGeolocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserLocation([latitude, longitude]);
-        const address = await getAddressFromCoords(latitude, longitude);
-        setUserAddress(address);
-        reportLocation(latitude, longitude, address);
-        setIsGeolocating(false);
-      },
-      (error) => {
-        console.warn("Geolocation error:", error);
-        setIsGeolocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-    );
-  };
 
+    // Clear the old manually selected pin
+    setUserLocation(null);
+    setRouteCoords(null);
+    setRouteDistanceKm(null);
+
+    try {
+      const { lat, lng, accuracy } = await getReliableLocation();
+
+      const newLocation = [lat, lng];
+      setUserLocation(newLocation);
+
+      const address = await getAddressFromCoords(lat, lng);
+      setUserAddress(address);
+
+      reportLocation(lat, lng, address);
+
+      setLocationError(
+        accuracy > LOW_ACCURACY_THRESHOLD_M
+          ? `Location may be inaccurate (±${Math.round(accuracy)}m).`
+          : "",
+      );
+    } finally {
+      setIsGeolocating(false);
+    }
+  };
   useEffect(() => {
     if (!userLocation) return;
     let cancelled = false;
@@ -308,7 +340,9 @@ export default function LocationMap({
       new L.DivIcon({
         html: `
           <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-4px);">
-            <span style="background:#171310;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap;margin-bottom:4px;">You</span>
+            <span style="background:#171310;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap;margin-bottom:4px;">${
+              readOnly ? "Delivery" : "You"
+            }</span>
             <div style="width:16px;height:16px;border-radius:50%;background:#2563ff;box-shadow:0 0 0 6px rgba(37,99,255,0.25);"></div>
           </div>
         `,
@@ -316,7 +350,7 @@ export default function LocationMap({
         iconSize: [16, 16],
         iconAnchor: [8, 8],
       }),
-    [],
+    [readOnly],
   );
 
   const restaurantIcon = useMemo(
@@ -378,9 +412,9 @@ export default function LocationMap({
         zoom={14}
         zoomControl={false}
         attributionControl={false}
-        scrollWheelZoom
-        touchZoom
-        doubleClickZoom
+        scrollWheelZoom={!readOnly}
+        touchZoom={!readOnly}
+        doubleClickZoom={!readOnly}
         dragging
         className="location-map-canvas"
         style={{ width: "100%", height: "100%" }}
@@ -406,7 +440,7 @@ export default function LocationMap({
         <Marker position={restaurantLocation} icon={restaurantIcon} />
         {userLocation && <Marker position={userLocation} icon={userIcon} />}
 
-        <ClickToSelect onSelect={handleMapClick} />
+        {!readOnly && <ClickToSelect onSelect={handleMapClick} />}
         <FitRoute
           user={userLocation}
           restaurant={restaurantLocation}
@@ -432,30 +466,51 @@ export default function LocationMap({
               }${userAddress ? ` · ${userAddress.split(",")[0]}` : ""}`}
         </p>
       )}
-
-      <button
-        type="button"
-        onClick={handleUseCurrentLocation}
-        disabled={isGeolocating}
-        style={{
-          position: "absolute",
-          bottom: 14,
-          left: 14,
-          zIndex: 5,
-          border: "none",
-          borderRadius: 999,
-          padding: "8px 14px",
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#fff",
-          background: "rgba(23,19,16,0.85)",
-          backdropFilter: "blur(6px)",
-          cursor: isGeolocating ? "default" : "pointer",
-          opacity: isGeolocating ? 0.6 : 1,
-        }}
-      >
-        Use current location
-      </button>
+      {locationError && !readOnly && (
+        <p
+          style={{
+            position: "absolute",
+            bottom: 54,
+            left: 14,
+            right: 14,
+            zIndex: 1000, // was 5 — Leaflet's panes go up to ~700
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#fff",
+            background: "rgba(214,60,60,0.92)",
+            padding: "6px 10px",
+            borderRadius: 8,
+            margin: 0,
+          }}
+        >
+          {locationError} Tap anywhere on the map to set it manually.
+        </p>
+      )}
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={handleUseCurrentLocation}
+          disabled={isGeolocating}
+          style={{
+            position: "absolute",
+            bottom: 14,
+            left: 14,
+            zIndex: 5,
+            border: "none",
+            borderRadius: 999,
+            padding: "8px 14px",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#fff",
+            background: "rgba(23,19,16,0.85)",
+            backdropFilter: "blur(6px)",
+            cursor: isGeolocating ? "default" : "pointer",
+            opacity: isGeolocating ? 0.6 : 1,
+          }}
+        >
+          Use current location
+        </button>
+      )}
     </div>
   );
 }

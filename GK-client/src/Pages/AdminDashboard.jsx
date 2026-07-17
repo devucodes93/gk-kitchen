@@ -23,16 +23,22 @@ import {
   FaUtensils,
 } from "react-icons/fa";
 import API from "../api/api";
+// Adjust this import path to wherever LocationMap actually lives in your project.
+import LocationMap from "../components/LocationMap/LocationMap";
 import "./AdminDashboard.css";
 
-const ORDER_STATUSES = [
+// The full, ordered lifecycle a normal (non-cancelled) order moves through.
+// The UI only ever shows the ONE next action in this list — never a free
+// jump-to-any-status control — so there's no way to get confused about
+// what "next" means.
+const STATUS_FLOW = [
   "Pending",
   "Preparing",
   "Ready",
   "Out for Delivery",
   "Delivered",
-  "Cancelled",
 ];
+const ORDER_STATUSES = [...STATUS_FLOW, "Cancelled"];
 const PAGE_SIZE = 8;
 
 const emptyMenuForm = {
@@ -75,6 +81,35 @@ const parseItems = (items) => {
   }
 };
 
+// Order objects can arrive from several different endpoints (dashboard
+// summary, orders list, SSE push, single-order fetch) that don't all carry
+// the same fields. Anything that identifies a customer's phone number goes
+// through here so "Phone: Not available" only shows when it's genuinely
+// missing from the backend, not because the frontend guessed the wrong key.
+const getOrderPhone = (order = {}) =>
+  order.phone_number ||
+  order.phone ||
+  order.customer_phone ||
+  order.contact_number ||
+  order.customerPhone ||
+  "";
+
+// The next status in the normal flow, or null if the order is already at
+// the end of the line (Delivered) or was cancelled.
+const nextStatus = (status) => {
+  const index = STATUS_FLOW.indexOf(status || "Pending");
+  if (index === -1 || index === STATUS_FLOW.length - 1) return null;
+  return STATUS_FLOW[index + 1];
+};
+
+// A summary order (from /admin/dashboard or /orders) is missing the fields
+// only the single-order endpoint returns. Use this to decide whether we
+// need to go fetch the rest before opening the details drawer.
+const isSummaryOrder = (order = {}) =>
+  order.items === undefined ||
+  order.location === undefined ||
+  getOrderPhone(order) === "";
+
 const normalizeMenu = (item = {}) => ({
   ...emptyMenuForm,
   ...item,
@@ -110,6 +145,7 @@ const AdminDashboard = () => {
   const [toast, setToast] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
   const [detailOrder, setDetailOrder] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [customerDetail, setCustomerDetail] = useState(null);
   const [needsAdminLogin, setNeedsAdminLogin] = useState(
     !localStorage.getItem("adminToken"),
@@ -275,13 +311,20 @@ const AdminDashboard = () => {
     settings: [fetchRestaurant],
     profile: [fetchMe],
   };
+
+  // Runs each fetcher for a view ONE AFTER ANOTHER (not in parallel via
+  // Promise.all) and, thanks to loadedRef, only the first time a tab is
+  // opened in this session — switching back to a tab you've already visited
+  // does not re-hit the API at all.
   const loadView = useCallback(
     async (view, { force = false } = {}) => {
       if (!force && loadedRef.current.has(view)) return;
       setAdminTokenForRequest();
       setLoading(true);
       try {
-        for (const fn of VIEW_FETCHERS[view] || []) await fn();
+        for (const fn of VIEW_FETCHERS[view] || []) {
+          await fn(); // sequential on purpose — one request completes before the next starts
+        }
         loadedRef.current.add(view);
       } catch (err) {
         if ([401, 403].includes(err.response?.status)) setNeedsAdminLogin(true);
@@ -294,16 +337,23 @@ const AdminDashboard = () => {
         setLoading(false);
       }
     },
+<<<<<<< HEAD
     [showToast], // add any other outer-scope values it reads: setAdminTokenForRequest, setLoading, setNeedsAdminLogin, VIEW_FETCHERS
   );// include loadView now
+=======
+    [showToast],
+  );
+>>>>>>> c6d7accacef009fe61131b1b49121700d1506a36
 
-  // initial + tab-change load
+  // initial + tab-change load (only fetches if that tab hasn't loaded yet)
   useEffect(() => {
     if (needsAdminLogin) return;
     loadView(activeView);
-  }, [activeView, needsAdminLogin]);
+  }, [activeView, needsAdminLogin, loadView]);
 
-  // lightweight live-ish updates — only while it matters
+  // Live order updates over SSE. This connects ONCE per login session — it
+  // does not depend on activeView, so switching tabs never reopens the
+  // connection or fires extra requests.
   useEffect(() => {
     if (needsAdminLogin) return undefined;
     const adminToken = localStorage.getItem("adminToken");
@@ -321,7 +371,13 @@ const AdminDashboard = () => {
         if (!loadedRef.current.has("orders")) return current;
         return upsertNewestOrder(current, order);
       });
-      setDetailOrder((current) => (current?.id === order.id ? order : current));
+      // Only replace the open drawer's order if the pushed payload actually
+      // has the full detail fields — otherwise a slim SSE payload could
+      // blow away the full order we already fetched for the drawer.
+      setDetailOrder((current) => {
+        if (current?.id !== order.id) return current;
+        return isSummaryOrder(order) ? { ...current, ...order } : order;
+      });
 
       if (event.type === "order-created") notifyNewOrder(order);
       setDashboard((current) => {
@@ -360,7 +416,7 @@ const AdminDashboard = () => {
     source.addEventListener("order-picked", handleOrderEvent);
 
     return () => source.close();
-  }, [needsAdminLogin, activeView]);
+  }, [needsAdminLogin]);
 
   const filteredMenu = useMemo(() => {
     return menuItems.filter((item) => {
@@ -474,7 +530,6 @@ const AdminDashboard = () => {
         discounted_price: discounted_price ? Number(discounted_price) : null,
         is_discounted,
       };
-      console.log("Menu Payload:", payload);
 
       if (_imageFile) {
         const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME;
@@ -588,7 +643,9 @@ const AdminDashboard = () => {
         ),
       );
       setDetailOrder((current) =>
-        current?.id === order.id ? response.data.data : current,
+        current?.id === order.id
+          ? { ...current, ...response.data.data }
+          : current,
       );
       setBusyOrderId(null);
       return response;
@@ -720,8 +777,7 @@ const AdminDashboard = () => {
       "Saving restaurant settings...",
       async () => {
         const response = await API.put("/admin/restaurant", restaurant);
-        const refreshed = await API.get("/admin/restaurant");
-        setRestaurant(refreshed.data?.data || response.data.data);
+        setRestaurant(response.data.data || restaurant);
       },
       "Restaurant settings updated",
     );
@@ -742,8 +798,7 @@ const AdminDashboard = () => {
           ...currentRestaurant,
           is_accepting_orders: currentRestaurant.is_accepting_orders === false,
         });
-        const refreshed = await API.get("/admin/restaurant");
-        setRestaurant(refreshed.data?.data || response.data.data);
+        setRestaurant(response.data.data || currentRestaurant);
       },
       restaurant.is_accepting_orders === false
         ? "Online ordering is open"
@@ -785,6 +840,31 @@ const AdminDashboard = () => {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Opens the order details drawer. If the order we already have in state
+  // is a slim summary (from the dashboard/orders list), fetch the single
+  // full order first so items/location/phone are populated. Orders that
+  // already carry full detail (e.g. a fresh SSE push) skip the network
+  // call entirely.
+  const openOrderDetails = async (order) => {
+    setDetailOrder(order);
+    if (!isSummaryOrder(order)) return;
+
+    setDetailLoading(true);
+    try {
+      setAdminTokenForRequest();
+      const response = await API.get(`/orders/${order.id}`);
+      const full = response.data?.data || response.data;
+      if (full) setDetailOrder((current) => ({ ...current, ...full }));
+    } catch (error) {
+      showToast(
+        error.response?.data?.message || "Couldn't load full order details",
+        "error",
+      );
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -1041,7 +1121,10 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const renderOrdersTable = (items, showControls = true) => (
+  // Status column now shows plain text, not a free jump-to-any-status
+  // dropdown — the only place status can be advanced is the details
+  // drawer's single "next step" button, so there's one unambiguous path.
+  const renderOrdersTable = (items, showDetails = true) => (
     <div className="admin-table-wrap">
       <table className="admin-table">
         <thead>
@@ -1061,28 +1144,17 @@ const AdminDashboard = () => {
               <td>{order.customer_name || "Guest"}</td>
               <td>{currency(order.total_price)}</td>
               <td>
-                {showControls ? (
-                  <select
-                    className={statusClass(order.status)}
-                    value={order.status || "Pending"}
-                    onChange={(e) => updateOrderStatus(order, e.target.value)}
-                    disabled={busyOrderId === order.id}
-                  >
-                    {ORDER_STATUSES.map((status) => (
-                      <option key={status}>{status}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className={statusClass(order.status)}>
-                    {order.status || "Pending"}
-                  </span>
-                )}
+                <span className={statusClass(order.status)}>
+                  {order.status || "Pending"}
+                </span>
               </td>
               <td>{dateTime(order.created_at)}</td>
               <td>
-                <button type="button" onClick={() => setDetailOrder(order)}>
-                  Details
-                </button>
+                {showDetails && (
+                  <button type="button" onClick={() => openOrderDetails(order)}>
+                    Details
+                  </button>
+                )}
               </td>
             </tr>
           ))}
@@ -1231,11 +1303,12 @@ const AdminDashboard = () => {
             </div>
             <button
               type="button"
-              onClick={async () =>
+              onClick={async () => {
+                setAdminTokenForRequest();
                 setCustomerDetail(
                   unwrap(await API.get(`/admin/customers/${customer.id}`)),
-                )
-              }
+                );
+              }}
             >
               History
             </button>
@@ -1373,6 +1446,39 @@ const AdminDashboard = () => {
               handleImage(e, (url) =>
                 setRestaurant({ ...restaurant, banner_url: url }),
               )
+            }
+          />
+        </label>
+      </div>
+      <div className="admin-form-grid">
+        <label>
+          GST (%)
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={restaurant.gst || ""}
+            onChange={(e) =>
+              setRestaurant({
+                ...restaurant,
+                gst: Number(e.target.value),
+              })
+            }
+          />
+        </label>
+
+        <label>
+          Delivery Radius (KM)
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={restaurant.deliveryRadiusKm || ""}
+            onChange={(e) =>
+              setRestaurant({
+                ...restaurant,
+                deliveryRadiusKm: Number(e.target.value),
+              })
             }
           />
         </label>
@@ -1623,6 +1729,7 @@ const AdminDashboard = () => {
           onClose={() => setDetailOrder(null)}
           onStatusChange={updateOrderStatus}
           busy={busyOrderId === detailOrder.id}
+          loadingDetails={detailLoading}
         />
       )}
       {customerDetail && (
@@ -1661,17 +1768,54 @@ const LoadingGrid = () => (
   </div>
 );
 
-const OrderDetails = ({ order, onClose, onStatusChange, busy }) => {
+// One dot per stage of STATUS_FLOW. Stages before the current one are
+// "done", the current one is highlighted, everything after is greyed out —
+// so the admin can see exactly where the order is at a glance, with zero
+// ambiguity about what happens next.
+const StatusStepper = ({ status }) => {
+  const isCancelled = status === "Cancelled";
+  const currentIndex = STATUS_FLOW.indexOf(status || "Pending");
+
+  return (
+    <div className="admin-status-stepper">
+      {STATUS_FLOW.map((step, index) => {
+        const state = isCancelled
+          ? "cancelled"
+          : index < currentIndex
+            ? "done"
+            : index === currentIndex
+              ? "current"
+              : "upcoming";
+        return (
+          <div className={`admin-step admin-step--${state}`} key={step}>
+            <span className="admin-step-dot" />
+            <span className="admin-step-label">{step}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const OrderDetails = ({
+  order,
+  onClose,
+  onStatusChange,
+  busy,
+  loadingDetails,
+}) => {
   const items = parseItems(order.items);
+  const phone = getOrderPhone(order);
   const hasCoordinates = order.delivery_lat && order.delivery_lng;
   const mapsUrl = hasCoordinates
     ? `https://www.google.com/maps/dir/?api=1&destination=${order.delivery_lat},${order.delivery_lng}`
     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
         order.location || "",
       )}`;
-  const mapEmbedUrl = hasCoordinates
-    ? `https://www.openstreetmap.org/export/embed.html?marker=${order.delivery_lat},${order.delivery_lng}&layer=mapnik`
-    : "";
+
+  const status = order.status || "Pending";
+  const isCancelled = status === "Cancelled";
+  const next = nextStatus(status);
 
   return (
     <div className="admin-modal-backdrop">
@@ -1680,6 +1824,9 @@ const OrderDetails = ({ order, onClose, onStatusChange, busy }) => {
           Close
         </button>
         <h2>Order #{order.id}</h2>
+
+        <StatusStepper status={status} />
+
         <div className="admin-detail-grid">
           <p>
             <span>Total amount</span>
@@ -1691,7 +1838,7 @@ const OrderDetails = ({ order, onClose, onStatusChange, busy }) => {
           </p>
           <p>
             <span>Status</span>
-            {order.status || "Pending"}
+            {status}
           </p>
           <p>
             <span>Date</span>
@@ -1703,13 +1850,15 @@ const OrderDetails = ({ order, onClose, onStatusChange, busy }) => {
           </p>
           <p>
             <span>Phone</span>
-            {order.phone_number || "Not available"}
+            {phone || "Not available"}
           </p>
         </div>
+
         <p className="admin-address">
           <span>Delivery address</span>
-          {order.location || "Not available"}
+          {loadingDetails ? "Loading..." : order.location || "Not available"}
         </p>
+
         {(order.order_instructions || order.order_preferences) && (
           <div className="admin-order-notes">
             {order.order_instructions && (
@@ -1726,59 +1875,99 @@ const OrderDetails = ({ order, onClose, onStatusChange, busy }) => {
             )}
           </div>
         )}
+
         <div className="admin-delivery-actions">
-          {order.phone_number && (
-            <a href={`tel:${order.phone_number}`}>
+          {phone && (
+            <a href={`tel:${phone}`}>
               <FaPhoneAlt /> Call customer
             </a>
           )}
           <a href={mapsUrl} target="_blank" rel="noreferrer">
             <FaMapMarkerAlt /> Open navigation
           </a>
-          <button
-            type="button"
-            onClick={() => onStatusChange(order, "Out for Delivery")}
-            disabled={busy || order.status === "Out for Delivery"}
-          >
-            {busy ? "Saving..." : "Out for Delivery"}
-          </button>
-          <button
-            type="button"
-            className="admin-delivered-btn"
-            onClick={() => onStatusChange(order, "Delivered")}
-            disabled={busy || order.status === "Delivered"}
-          >
-            {busy ? "Saving..." : "Mark Delivered"}
-          </button>
         </div>
-        {mapEmbedUrl && (
-          <iframe
-            className="admin-delivery-map"
-            title={`Delivery map for order ${order.id}`}
-            src={mapEmbedUrl}
-          />
+
+        {/* Exactly one actionable control at a time: the single next step,
+            a cancel option while that's still valid, or a plain completion
+            note once there is nothing left to do. Never more than one
+            status button visible together. */}
+        {isCancelled ? (
+          <p className="admin-cancelled-note">This order was cancelled.</p>
+        ) : next ? (
+          <div className="admin-status-actions">
+            <button
+              type="button"
+              className="admin-primary"
+              onClick={() => onStatusChange(order, next)}
+              disabled={busy}
+            >
+              {busy ? "Saving..." : `Mark as ${next}`}
+            </button>
+            {status !== "Out for Delivery" && (
+              <button
+                type="button"
+                className="admin-danger"
+                onClick={() => onStatusChange(order, "Cancelled")}
+                disabled={busy}
+              >
+                Cancel order
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="admin-delivered-note">
+            ✅ Delivered — no further action needed.
+          </p>
         )}
-        <h3>Ordered items</h3>
+
+        {hasCoordinates ? (
+          <LocationMap
+            readOnly
+            height={220}
+            defaultLocation={[
+              Number(order.delivery_lat),
+              Number(order.delivery_lng),
+            ]}
+          />
+        ) : (
+          <p className="admin-muted">
+            No pinned location saved for this order — use the address above.
+          </p>
+        )}
+
+        <h3
+          style={{
+            marginTop: "30px",
+          }}
+        >
+          Ordered items
+        </h3>
         <div className="admin-list">
-          {items.map((item, index) => {
-            const name =
-              item.name || item.menu_name || item.item_name || "Item";
-            const quantity = Number(item.quantity || item.qty || 1);
-            const price = Number(item.price || item.unit_price || 0);
-            return (
-              <article className="admin-list-row" key={`${name}-${index}`}>
-                <div>
-                  <h3>{name}</h3>
-                  <p>
-                    Quantity: {quantity} · Unit: {currency(price)}
-                    {item.item_type === "addon" ? " · Add-on" : ""}
-                  </p>
-                </div>
-                <strong>{currency(price * quantity)}</strong>
-              </article>
-            );
-          })}
-          {!items.length && <EmptyState label="No item details saved" />}
+          {loadingDetails && !items.length ? (
+            <p className="admin-muted">Loading items...</p>
+          ) : (
+            items.map((item, index) => {
+              const name =
+                item.name || item.menu_name || item.item_name || "Item";
+              const quantity = Number(item.quantity || item.qty || 1);
+              const price = Number(item.price || item.unit_price || 0);
+              return (
+                <article className="admin-list-row" key={`${name}-${index}`}>
+                  <div>
+                    <h3>{name}</h3>
+                    <p>
+                      Quantity: {quantity} · Unit: {currency(price)}
+                      {item.item_type === "addon" ? " · Add-on" : ""}
+                    </p>
+                  </div>
+                  <strong>{currency(price * quantity)}</strong>
+                </article>
+              );
+            })
+          )}
+          {!loadingDetails && !items.length && (
+            <EmptyState label="No item details saved" />
+          )}
         </div>
       </div>
     </div>

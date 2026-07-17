@@ -7,7 +7,114 @@ body.admin-route {
 body.admin-route #root {
   min-height: 100vh;
 }
+/* Add this block to AdminDashboard.css — styles for the new order-status
+   stepper and single-action drawer states. Nothing here removes any
+   existing rule; it's purely additive. */
 
+.admin-status-stepper {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 14px 0 18px;
+}
+
+.admin-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+  text-align: center;
+}
+
+.admin-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 55%;
+  width: 90%;
+  height: 2px;
+  background: #e4ddd4;
+  z-index: 0;
+}
+
+.admin-step--done:not(:last-child)::after,
+.admin-step--current:not(:last-child)::after {
+  background: #171310;
+}
+
+.admin-step-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e4ddd4;
+  z-index: 1;
+}
+
+.admin-step-label {
+  font-size: 11px;
+  margin-top: 6px;
+  color: #9a8f80;
+  font-weight: 500;
+}
+
+.admin-step--done .admin-step-dot {
+  background: #171310;
+}
+
+.admin-step--current .admin-step-dot {
+  background: #171310;
+  box-shadow: 0 0 0 4px rgba(23, 19, 16, 0.15);
+}
+
+.admin-step--done .admin-step-label,
+.admin-step--current .admin-step-label {
+  color: #171310;
+  font-weight: 700;
+}
+
+.admin-step--cancelled .admin-step-dot {
+  background: #d63c3c;
+}
+
+.admin-step--cancelled .admin-step-label {
+  color: #d63c3c;
+}
+
+.admin-status-actions {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.admin-status-actions .admin-primary {
+  flex: 1;
+}
+
+.admin-cancelled-note,
+.admin-delivered-note {
+  margin: 14px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.admin-cancelled-note {
+  background: rgba(214, 60, 60, 0.1);
+  color: #d63c3c;
+}
+
+.admin-delivered-note {
+  background: rgba(40, 160, 90, 0.1);
+  color: #1f8a4c;
+}
+
+.admin-muted {
+  color: #9a8f80;
+  font-size: 13px;
+  margin: 10px 0;
+}
 .admin-app {
   width: 100%;
   min-height: 100dvh;

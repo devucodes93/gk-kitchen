@@ -1,5 +1,6 @@
 .rider-app {
   min-height: 100vh;
+  min-height: 100dvh;
   margin-top: -80px;
   background: #f4f7f4;
   color: #17202a;
@@ -15,33 +16,36 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 16px clamp(16px, 4vw, 36px);
-  background: rgba(244, 247, 244, 0.88);
+  padding: calc(16px + env(safe-area-inset-top, 0px)) clamp(16px, 4vw, 36px)
+    16px;
+  background: rgba(244, 247, 244, 0.92);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid #dfe7dd;
 }
 
 .rider-topbar h1 {
   margin: 0;
-  font-size: clamp(24px, 3vw, 36px);
+  font-size: clamp(22px, 5vw, 36px);
   letter-spacing: 0;
 }
 
 .rider-topbar p {
   margin: 0 0 4px;
   color: #637064;
+  font-size: 13px;
 }
 
 .rider-topbar button {
-  min-height: 42px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #163a24;
   color: #fff;
-  padding: 0 14px;
+  padding: 0 16px;
+  font-weight: 700;
 }
 
 .rider-topbar button:disabled,
@@ -50,30 +54,55 @@
   cursor: wait;
 }
 
+/* --- Login screen --- */
+
+.rider-login-card {
+  gap: 12px;
+}
+
+.rider-login-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(23, 58, 36, 0.08);
+  color: #163a24;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.rider-login-notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.rider-login-lock-note {
+  margin: 0;
+  font-size: 12px;
+  color: #d63c3c;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* --- Order list --- */
+
 .rider-layout {
   display: grid;
   grid-template-columns: minmax(280px, 390px) minmax(0, 1fr);
   gap: 16px;
-  padding: 18px clamp(16px, 4vw, 36px) 36px;
+  padding: 14px clamp(12px, 4vw, 36px) 36px;
 }
 
 .rider-layout--list-only {
-  grid-template-columns: minmax(280px, 720px);
+  grid-template-columns: minmax(0, 720px);
   justify-content: center;
 }
 
-.rider-orders,
-.rider-detail-card {
+.rider-orders {
   display: grid;
   gap: 10px;
-}
-
-.rider-order-card,
-.rider-detail-card {
-  border: 1px solid #dfe7dd;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 12px 30px rgba(22, 58, 36, 0.06);
 }
 
 .rider-order-card {
@@ -81,7 +110,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px;
+  min-height: 68px;
+  padding: 14px 16px;
+  border: 1px solid #dfe7dd;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(22, 58, 36, 0.06);
   cursor: pointer;
 }
 
@@ -90,130 +124,188 @@
   box-shadow: 0 0 0 3px rgba(30, 143, 85, 0.14);
 }
 
-.rider-order-card p,
-.rider-detail-head p {
+.rider-order-card strong {
+  font-size: 15px;
+}
+
+.rider-order-card p {
   margin: 4px 0 0;
   color: #637064;
+  font-size: 13px;
 }
 
-.rider-detail-card {
-  padding: 18px;
-}
-
-.rider-detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.rider-detail-head h2 {
-  margin: 0;
-}
+/* --- Full-screen modal sheet (mobile default) --- */
 
 .rider-modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 45;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgba(11, 24, 16, 0.48);
+  display: flex;
+  background: rgba(11, 24, 16, 0.5);
 }
 
 .rider-modal {
-  width: min(720px, 100%);
-  max-height: min(86vh, 900px);
-  overflow-y: auto;
-  border-radius: 12px;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   background: #fff;
-  box-shadow: 0 24px 70px rgba(11, 24, 16, 0.28);
-  position: relative;
+  overflow: hidden;
 }
 
-.rider-modal--picked {
-  width: min(1180px, 100%);
-  max-height: min(94vh, 980px);
+.rider-modal-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 14px 12px;
+  border-bottom: 1px solid #dfe7dd;
+  background: #fff;
+  z-index: 3;
+}
+
+.rider-modal-header h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.rider-modal-header p {
+  margin: 0 0 4px;
+  color: #637064;
+  font-size: 12px;
+}
+
+.rider-modal-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .rider-modal-close {
-  position: sticky;
-  top: 12px;
-  z-index: 2;
-  float: right;
-  min-height: 38px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
   border: 0;
-  border-radius: 8px;
-  background: #163a24;
-  color: #fff;
-  padding: 0 14px;
-  margin: 12px 12px -48px 0;
-}
-
-.rider-map-help {
-  margin: 8px 0 2px;
-  color: #637064;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.rider-detail-card--active-trip {
-  padding: 12px;
-  gap: 14px;
-}
-
-.rider-trip-map-shell {
-  position: relative;
-  min-height: min(66vh, 620px);
-  overflow: hidden;
   border-radius: 10px;
+  background: #f0f4ef;
+  color: #17202a;
+  flex-shrink: 0;
+}
+
+/* The ONLY scrollable region — map + all details live here, between the
+   fixed header and fixed footer, so nothing can end up trapped out of
+   view below the fold. */
+.rider-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Map sits completely flush against the edges of the scroll area — zero
+   margin, zero padding — so it renders truly full-bleed on a phone. */
+.rider-map-shell {
+  position: relative;
+  width: 100%;
+  height: min(48vh, 420px);
+  margin: 0;
+  padding: 0;
   background: #edf3ec;
 }
 
-.rider-trip-map-shell .delivery-route-map {
-  border-radius: 10px;
+.rider-map-shell .delivery-route-map {
+  height: 100% !important;
+  width: 100%;
 }
 
-.rider-trip-summary {
-  position: absolute;
-  z-index: 5;
-  top: 14px;
-  left: 14px;
-  width: min(420px, calc(100% - 28px));
+.rider-map-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+}
+
+.rider-detail-content {
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
   display: grid;
+  gap: 14px;
+}
+
+.rider-map-help {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eef4ee;
+  color: #46524a;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.rider-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  border: 1px solid rgba(223, 231, 221, 0.92);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 16px 45px rgba(11, 24, 16, 0.16);
-  padding: 12px;
-  backdrop-filter: blur(14px);
 }
 
-.rider-trip-mini-grid {
+/* Sticky footer — pinned to the bottom of the sheet at all times,
+   independent of how far the person has scrolled the map/details above
+   it, so action buttons are always reachable. */
+.rider-modal-footer {
+  flex: 0 0 auto;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #dfe7dd;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  z-index: 3;
+}
+
+.rider-actions-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 8px;
 }
 
-.rider-trip-mini-grid p {
-  margin: 0;
-  min-width: 0;
-  border-radius: 8px;
-  background: #f4f7f4;
-  color: #17202a;
-  padding: 8px;
-  font-weight: 800;
-  overflow-wrap: anywhere;
+.rider-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  border-radius: 10px;
+  border: 0;
+  font-weight: 700;
+  font-size: 13.5px;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
-.rider-trip-mini-grid span {
-  display: block;
-  margin-bottom: 2px;
-  color: #637064;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
+.rider-action-btn--ghost {
+  background: #f0f4ef;
+  color: #163a24;
+}
+
+.rider-action-btn--primary {
+  background: #163a24;
+  color: #fff;
+}
+
+.rider-action-btn--success {
+  background: #1e8f55;
+  color: #fff;
+}
+
+.rider-action-done {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  font-weight: 700;
+  color: #1e8f55;
 }
 
 .rider-skeleton-list {
@@ -224,7 +316,7 @@
 .rider-skeleton-card {
   height: 78px;
   border: 1px solid #dfe7dd;
-  border-radius: 8px;
+  border-radius: 12px;
   background: #fff;
   padding: 14px;
   display: grid;
@@ -254,31 +346,39 @@
   }
 }
 
-@media (max-width: 840px) {
-  .rider-layout {
-    grid-template-columns: 1fr;
-  }
-
+/* --- Larger screens: modal becomes a centered card instead of a
+   full-screen sheet, map gets more height since there's room to spare.
+   Mobile (the default above) is untouched by this. --- */
+@media (min-width: 760px) {
   .rider-modal-backdrop {
-    padding: 8px;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
   }
 
-  .rider-modal--picked {
-    max-height: 96vh;
+  .rider-modal {
+    width: min(720px, 100%);
+    height: auto;
+    max-height: min(88vh, 900px);
+    border-radius: 16px;
+    box-shadow: 0 24px 70px rgba(11, 24, 16, 0.28);
   }
 
-  .rider-trip-summary {
-    position: static;
-    width: auto;
-    margin: 8px;
+  .rider-modal-header {
+    padding: 16px 18px 14px;
+    border-radius: 16px 16px 0 0;
   }
 
-  .rider-trip-map-shell {
-    display: flex;
-    flex-direction: column;
+  .rider-map-shell {
+    height: min(50vh, 460px);
   }
 
-  .rider-trip-mini-grid {
-    grid-template-columns: 1fr;
+  .rider-modal-footer {
+    border-radius: 0 0 16px 16px;
+    padding: 12px 18px;
+  }
+
+  .rider-layout {
+    padding: 18px clamp(16px, 4vw, 36px) 36px;
   }
 }

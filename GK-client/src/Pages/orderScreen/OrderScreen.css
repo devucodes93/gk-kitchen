@@ -23,7 +23,141 @@
   transition: background 0.3s ease;
   backdrop-filter: blur(0px);
 }
+/* --- Veg / Non-veg dot --- */
+.order-veg-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid;
+  border-radius: 2px;
+  position: relative;
+}
+.order-veg-dot::after {
+  content: "";
+  position: absolute;
+  inset: 1.5px;
+  border-radius: 50%;
+}
+.order-veg-dot--veg {
+  border-color: #1e8e3e;
+}
+.order-veg-dot--veg::after {
+  background: #1e8e3e;
+}
+.order-veg-dot--nonveg {
+  border-color: #c0392b;
+}
+.order-veg-dot--nonveg::after {
+  background: #c0392b;
+}
+.order-veg-dot--corner {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: #fff;
+}
 
+/* --- Add-ons list (modal) --- */
+.order-addon-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px 8px;
+}
+
+.order-addon-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #eee;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.order-addon-option:hover {
+  border-color: #e6d3bb;
+  background: #fdfaf6;
+}
+.order-addon-option--selected {
+  border-color: var(--gk-saffron, #e08a2b);
+  background: #fff8ef;
+}
+
+.order-addon-option-icon {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f2ede6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.order-addon-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.order-addon-icon-fallback {
+  font-size: 16px;
+}
+
+.order-addon-option-copy {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.order-addon-option-copy strong {
+  font-size: 13.5px;
+  color: #2b2b2b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.order-addon-option-price {
+  font-size: 12px;
+  color: #8a8a8a;
+  font-weight: 600;
+}
+
+.order-addon-option-btn {
+  border: 1.5px solid var(--gk-saffron, #e08a2b);
+  background: #fff;
+  color: var(--gk-saffron, #e08a2b);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 998px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.order-addon-option-btn--active {
+  background: var(--gk-saffron, #e08a2b);
+  color: #fff;
+}
+.order-addon-pill-media {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f2ede6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .order-overlay--visible {
   background: rgba(255, 248, 236, 0.18);
   backdrop-filter: blur(2px);

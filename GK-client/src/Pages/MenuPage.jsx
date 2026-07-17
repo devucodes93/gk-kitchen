@@ -29,6 +29,10 @@ const CATEGORY_ACCENTS = {
 };
 const FALLBACK_ACCENT = "var(--gk-muted)";
 
+// Fallback radius (km) used only if the backend doesn't send delivery_radius_km.
+const DEFAULT_DELIVERY_RADIUS_KM = 10;
+const EARTH_RADIUS_KM = 6371;
+
 const readMenuCache = () => {
   try {
     const cached = JSON.parse(localStorage.getItem(MENU_CACHE_KEY) || "null");
@@ -117,7 +121,33 @@ const transformMenuItem = (backendItem) => {
     img: backendItem.image_url || backendItem.image || "",
     available,
     desc: backendItem.description || backendItem.menu_name || "",
+    addons: backendItem.addons || [], // <-- add this
   };
+};
+
+// Safe numeric coercion — returns `fallback` for null/undefined/NaN instead of
+// silently producing NaN further down the pipeline (that was the main source
+// of "bugs" this kind of feature tends to introduce).
+const toFiniteNumber = (value, fallback = null) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+// Haversine great-circle distance in kilometres. Returns null if any
+// coordinate is missing/invalid so callers can distinguish "0 km away" from
+// "we don't know yet".
+const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+  if ([lat1, lon1, lat2, lon2].some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return EARTH_RADIUS_KM * c;
 };
 
 const MenuPage = () => {
@@ -137,8 +167,17 @@ const MenuPage = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(() =>
     Boolean(localStorage.getItem("token")),
   );
-  const [loginNotice, setLoginNotice] = useState("");
+  const [orderNotice, setOrderNotice] = useState("");
   const [activeCategory, setActiveCategory] = useState(null);
+
+  // --- Delivery radius / fee / GST state -----------------------------------
+  // Restaurant-side config, pulled from /restaurant. Kept as its own object
+  // (instead of scattering more useState calls) so a single failed/absent
+  // field can't leave other derived values half-initialised.
+  const [restaurantInfo, setRestaurantInfo] = useState(null);
+  const [userCoords, setUserCoords] = useState(null);
+  // "checking" | "granted" | "denied" | "unsupported" | "error"
+  const [locationStatus, setLocationStatus] = useState("checking");
 
   const sectionRefs = useRef({});
 
@@ -184,17 +223,72 @@ const MenuPage = () => {
     const fetchRestaurantStatus = async () => {
       try {
         const response = await API.get("/restaurant");
-        if (isMounted) {
-          setAcceptingOrders(
-            response.data?.data?.is_accepting_orders !== false,
-          );
-        }
+        const data = response.data?.data || {};
+        if (!isMounted) return;
+
+        setAcceptingOrders(data.is_accepting_orders !== false);
+
+        const latitude = toFiniteNumber(data.latitude);
+        const longitude = toFiniteNumber(data.longitude);
+        const deliveryRadiusKm =
+          toFiniteNumber(data.delivery_radius_km) &&
+          toFiniteNumber(data.delivery_radius_km) > 0
+            ? toFiniteNumber(data.delivery_radius_km)
+            : DEFAULT_DELIVERY_RADIUS_KM;
+
+        setRestaurantInfo({
+          latitude,
+          longitude,
+          deliveryRadiusKm,
+          // ₹ per km, as stored in the restaurant's delivery_charge column
+          delivery_charge: toFiniteNumber(data.delivery_charge, 0),
+          // percentage, e.g. 5 => 5%. Backend field is just "gst".
+          gstPercent: toFiniteNumber(data.gst, 0),
+        });
       } catch {
-        if (isMounted) setAcceptingOrders(true);
+        if (isMounted) {
+          setAcceptingOrders(true);
+          setRestaurantInfo(null);
+        }
       }
     };
 
     fetchRestaurantStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Ask for the customer's location once, on mount. This never blocks
+  // rendering — if it's denied/unsupported we just fall back to "can't
+  // verify delivery area yet" until the restaurant coordinates say
+  // otherwise.
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!("geolocation" in navigator)) {
+      setLocationStatus("unsupported");
+      return undefined;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (!isMounted) return;
+        setUserCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+        setLocationStatus("granted");
+      },
+      (error) => {
+        if (!isMounted) return;
+        setLocationStatus(
+          error.code === error.PERMISSION_DENIED ? "denied" : "error",
+        );
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 5 * 60 * 1000 },
+    );
 
     return () => {
       isMounted = false;
@@ -240,6 +334,51 @@ const MenuPage = () => {
     };
   }, [pastOrdersLoaded]);
 
+  // --- Distance / radius / fee / GST derivations ----------------------------
+
+  // Only meaningful once the restaurant has told us where it actually is.
+  const radiusCheckEnabled = Boolean(
+    restaurantInfo &&
+    restaurantInfo.latitude !== null &&
+    restaurantInfo.longitude !== null,
+  );
+
+  const distanceKm = useMemo(() => {
+    if (!radiusCheckEnabled || !userCoords) return null;
+    return getDistanceKm(
+      restaurantInfo.latitude,
+      restaurantInfo.longitude,
+      userCoords.lat,
+      userCoords.lng,
+    );
+  }, [radiusCheckEnabled, restaurantInfo, userCoords]);
+
+  const deliveryRadiusKm =
+    restaurantInfo?.deliveryRadiusKm ?? DEFAULT_DELIVERY_RADIUS_KM;
+
+  // null = "don't know yet", true/false once we do.
+  const withinDeliveryRadius = useMemo(() => {
+    if (!radiusCheckEnabled || distanceKm === null) return null;
+    return distanceKm <= deliveryRadiusKm;
+  }, [radiusCheckEnabled, distanceKm, deliveryRadiusKm]);
+
+  const outOfDeliveryZone = withinDeliveryRadius === false;
+
+  // We couldn't get the browser location (denied / unsupported / error) and
+  // the restaurant *does* enforce a radius — so we genuinely can't confirm
+  // service is available. Treat as blocked rather than silently allowing it.
+  const needsLocationAccess =
+    radiusCheckEnabled &&
+    withinDeliveryRadius === null &&
+    ["denied", "unsupported", "error"].includes(locationStatus);
+
+  const checkingLocation =
+    radiusCheckEnabled &&
+    withinDeliveryRadius === null &&
+    locationStatus === "checking";
+
+  const deliveryUnavailable = outOfDeliveryZone || needsLocationAccess;
+
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [cart],
@@ -248,6 +387,38 @@ const MenuPage = () => {
     () => cart.reduce((sum, item) => sum + item.quantity, 0),
     [cart],
   );
+
+  // ₹ per km (delivery_charge) × distance travelled. Rounded to the nearest
+  // rupee for display; 0 whenever we don't have a distance yet.
+  const deliveryFee = useMemo(() => {
+    if (!restaurantInfo || distanceKm === null) return 0;
+    const fee = restaurantInfo.delivery_charge * distanceKm;
+    return Number.isFinite(fee) ? Math.round(fee) : 0;
+  }, [restaurantInfo, distanceKm]);
+
+  const gstPercent = restaurantInfo?.gstPercent ?? 0;
+
+  const gstAmount = useMemo(() => {
+    if (!restaurantInfo || !subtotal) return 0;
+    const amount = (subtotal * restaurantInfo.gstPercent) / 100;
+    return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
+  }, [restaurantInfo, subtotal]);
+
+  const orderTotal = useMemo(
+    () => subtotal + deliveryFee + gstAmount,
+    [subtotal, deliveryFee, gstAmount],
+  );
+
+  // Gate ALL price display on the *full* computation being ready: GST config
+  // loaded from the restaurant, and — if delivery-radius enforcement applies
+  // to this restaurant — the customer's distance also resolved. We deliberately
+  // show nothing (rather than a "subtotal-only" figure) until then, so nobody
+  // ever sees a number that looks final but hasn't had delivery fee/GST folded
+  // in yet.
+  const pricingReady =
+    !menuLoading &&
+    restaurantInfo !== null &&
+    (!radiusCheckEnabled || withinDeliveryRadius !== null);
 
   const categoryFilter = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -370,13 +541,25 @@ const MenuPage = () => {
 
   const addItem = (menuItem) => {
     if (!isLoggedIn) {
-      setLoginNotice(
+      setOrderNotice(
         "Please login from the navbar before ordering. Then your order history and tracking stay saved.",
       );
       return;
     }
     if (!acceptingOrders) return;
-    setLoginNotice("");
+    if (outOfDeliveryZone) {
+      setOrderNotice(
+        `Sorry, you're outside our ${deliveryRadiusKm} km delivery area, so we can't take this order.`,
+      );
+      return;
+    }
+    if (needsLocationAccess) {
+      setOrderNotice(
+        "Please allow location access in your browser so we can confirm we deliver to you.",
+      );
+      return;
+    }
+    setOrderNotice("");
     setCart((currentCart) => {
       const existing = currentCart.find((item) => item.name === menuItem.name);
       if (!existing) {
@@ -405,12 +588,30 @@ const MenuPage = () => {
 
   const handleCheckout = () => {
     if (!isLoggedIn) {
-      setLoginNotice("Please login from the navbar before checkout.");
+      setOrderNotice("Please login from the navbar before checkout.");
       return;
     }
     if (!acceptingOrders) return;
+    if (outOfDeliveryZone) {
+      setOrderNotice(
+        `Sorry, you're outside our ${deliveryRadiusKm} km delivery area, so we can't deliver here.`,
+      );
+      return;
+    }
+    if (needsLocationAccess) {
+      setOrderNotice(
+        "Please allow location access in your browser so we can confirm we deliver to you.",
+      );
+      return;
+    }
+    if (!pricingReady) {
+      setOrderNotice(
+        "Please wait a moment while we calculate delivery charges and GST.",
+      );
+      return;
+    }
     if (!cart.length) return;
-    setLoginNotice("");
+    setOrderNotice("");
     setCheckoutOpen(true);
   };
 
@@ -435,7 +636,14 @@ const MenuPage = () => {
     if (!repeatedItems.length) return;
 
     if (!isLoggedIn) {
-      setLoginNotice("Please login before repeating an order.");
+      setOrderNotice("Please login before repeating an order.");
+      return;
+    }
+
+    if (outOfDeliveryZone) {
+      setOrderNotice(
+        `Sorry, you're outside our ${deliveryRadiusKm} km delivery area, so we can't deliver here.`,
+      );
       return;
     }
 
@@ -445,6 +653,22 @@ const MenuPage = () => {
   };
 
   const closeCheckout = () => setCheckoutOpen(false);
+
+  // Buttons in the grid should disable for every reason ordering can't
+  // proceed, not just stock/availability — kept as one flag so every card
+  // and the FAB agree on what "can't order right now" means.
+  const orderingBlocked =
+    !acceptingOrders || !isLoggedIn || outOfDeliveryZone || needsLocationAccess;
+
+  const cartButtonLabel = (() => {
+    if (!isLoggedIn) return "Login to checkout";
+    if (!acceptingOrders) return "Delivery closed";
+    if (outOfDeliveryZone) return "Out of delivery area";
+    if (needsLocationAccess) return "Enable location";
+    if (checkingLocation) return "Checking delivery area…";
+    if (!pricingReady) return "Calculating total…";
+    return "Checkout";
+  })();
 
   return (
     <div className="menu-page">
@@ -460,7 +684,7 @@ const MenuPage = () => {
             <h1 className="menu-page-title">Choose your dishes</h1>
             {!menuLoading && dishCount > 0 && (
               <p className="menu-page-hero-meta">
-               From spicy biryanis to sizzling tandoori—made fresh for you.
+                From spicy biryanis to sizzling tandoori—made fresh for you.
               </p>
             )}
           </div>
@@ -496,6 +720,33 @@ const MenuPage = () => {
                 </span>
               </div>
             )}
+            {acceptingOrders && outOfDeliveryZone && (
+              <div className="menu-page-offline-banner">
+                <strong>We don't deliver to your location yet.</strong>
+                <span>
+                  You're about{" "}
+                  {distanceKm !== null ? distanceKm.toFixed(1) : "?"} km away,
+                  and we currently deliver within {deliveryRadiusKm} km.
+                </span>
+              </div>
+            )}
+            {acceptingOrders && !outOfDeliveryZone && needsLocationAccess && (
+              <div className="menu-page-offline-banner">
+                <strong>We need your location to check delivery.</strong>
+                <span>
+                  Please allow location access in your browser (and reload if
+                  needed) so we can confirm we deliver to your area.
+                </span>
+              </div>
+            )}
+            {acceptingOrders &&
+              !outOfDeliveryZone &&
+              !needsLocationAccess &&
+              checkingLocation && (
+                <div className="menu-page-status">
+                  Checking whether we deliver to your location…
+                </div>
+              )}
             {menuLoading && (
               <div className="menu-page-status">Loading menu…</div>
             )}
@@ -508,9 +759,9 @@ const MenuPage = () => {
                 </span>
               </div>
             )}
-            {loginNotice && (
+            {orderNotice && (
               <div className="menu-page-status menu-page-status--error">
-                {loginNotice}
+                {orderNotice}
               </div>
             )}
             {!menuLoading && menuError && (
@@ -607,7 +858,7 @@ const MenuPage = () => {
                               ?.quantity || 0;
                           const unavailable = menuItem.available === false;
                           const orderingDisabled =
-                            unavailable || !acceptingOrders || !isLoggedIn;
+                            unavailable || orderingBlocked;
 
                           return (
                             <article
@@ -683,7 +934,11 @@ const MenuPage = () => {
                                           ? "Login to order"
                                           : unavailable
                                             ? "Unavailable"
-                                            : "Add to cart"}
+                                            : outOfDeliveryZone
+                                              ? "Out of delivery area"
+                                              : needsLocationAccess
+                                                ? "Enable location"
+                                                : "Add to cart"}
                                     </button>
                                   )}
                                 </div>
@@ -726,13 +981,21 @@ const MenuPage = () => {
           )}
         </section>
 
+        {/*
+          Price display is intentionally gated on `pricingReady`. We never show
+          a subtotal-only figure — that could be mistaken for the final price
+          before delivery fee (needs the customer's location) and GST (from
+          restaurant config) are actually factored in. Once ready, only the
+          final "to pay" number is shown, not the individual line items.
+        */}
+
         <button
           type="button"
           className={`menu-page-cart-fab ${
             activeOrder ? "menu-page-cart-fab--with-tracker" : ""
           }`}
           onClick={handleCheckout}
-          disabled={!cart.length || !acceptingOrders || !isLoggedIn}
+          disabled={!cart.length || orderingBlocked || !pricingReady}
         >
           <span className="menu-page-cart-fab-icon">
             <FaShoppingCart />
@@ -741,15 +1004,15 @@ const MenuPage = () => {
             <strong>
               {cartCount} item{cartCount === 1 ? "" : "s"}
             </strong>
-            <span>
-              {!isLoggedIn
-                ? "Login to checkout"
-                : acceptingOrders
-                  ? "Checkout"
-                  : "Delivery closed"}
-            </span>
+            <span>{cartButtonLabel}</span>
           </span>
-          <span className="menu-page-cart-fab-total">₹{subtotal}</span>
+          <span className="menu-page-cart-fab-total">
+            {pricingReady
+              ? `₹${orderTotal.toFixed(2)}`
+              : cart.length
+                ? "…"
+                : ""}
+          </span>
         </button>
       </main>
 
@@ -760,6 +1023,13 @@ const MenuPage = () => {
           initialScreen="checkout"
           onClose={closeCheckout}
           menuItems={menuItems}
+          deliveryFee={deliveryFee}
+          gstPercent={gstPercent}
+          gstAmount={gstAmount}
+          distanceKm={distanceKm}
+          orderTotal={orderTotal}
+          deliveryRadiusKm={deliveryRadiusKm}
+          pricingReady={pricingReady}
         />
       )}
 

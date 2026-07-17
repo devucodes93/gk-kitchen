@@ -11,6 +11,17 @@ import { RESTAURANT_LOCATION } from "../constants/restaurant";
 import "leaflet/dist/leaflet.css";
 import "./DeliveryRouteMap.css";
 
+// GPS on a moving phone fires very frequently and jitters by a few metres
+// even standing still. Feeding every single fix straight into state was
+// triggering a fresh OSRM route request (and a map re-fit) on nearly every
+// tick — that's what reads as "flickering" and, worse, can make the drawn
+// path snap between the real road route and a straight-line fallback when
+// the public OSRM demo server rate-limits the burst of requests. These
+// gates mean we only treat a GPS fix as a real update when the rider has
+// actually moved a meaningful distance, or enough time has passed.
+const MIN_MOVE_METERS = 12;
+const MIN_UPDATE_INTERVAL_MS = 4000;
+
 const formatDistance = (km) => {
   if (!Number.isFinite(km)) return "Distance unavailable";
   if (km < 1) return `${Math.round(km * 1000)} m`;
@@ -120,6 +131,7 @@ const DeliveryRouteMap = ({
   const [routeError, setRouteError] = useState("");
   const [accuracyMeters, setAccuracyMeters] = useState(null);
   const [locationError, setLocationError] = useState("");
+  const lastAcceptedFixRef = useRef({ point: null, time: 0 });
 
   useEffect(() => {
     if (!useCurrentLocation || !navigator.geolocation) return undefined;
@@ -127,8 +139,32 @@ const DeliveryRouteMap = ({
     setLocating(true);
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        setOriginPoint([position.coords.latitude, position.coords.longitude]);
-        setAccuracyMeters(position.coords.accuracy || null);
+        const nextPoint = [position.coords.latitude, position.coords.longitude];
+        const accuracy = position.coords.accuracy || null;
+        const now = Date.now();
+        const last = lastAcceptedFixRef.current;
+
+        const movedMeters = last.point
+          ? L.latLng(last.point).distanceTo(L.latLng(nextPoint))
+          : Infinity;
+        const timeSinceLastMs = now - last.time;
+        const isFirstFix = !last.point;
+        const movedEnough = movedMeters >= MIN_MOVE_METERS;
+        const enoughTimePassed = timeSinceLastMs >= MIN_UPDATE_INTERVAL_MS;
+
+        // Always accept the very first fix (so the map isn't stuck showing
+        // nothing), otherwise only accept a new fix once the rider has
+        // actually moved a meaningful distance AND some time has passed —
+        // whichever gate is stricter for the situation.
+        if (!isFirstFix && !(movedEnough && enoughTimePassed)) {
+          setAccuracyMeters(accuracy);
+          setLocating(false);
+          return;
+        }
+
+        lastAcceptedFixRef.current = { point: nextPoint, time: now };
+        setOriginPoint(nextPoint);
+        setAccuracyMeters(accuracy);
         setLocating(false);
         setLocationError("");
       },
@@ -136,7 +172,7 @@ const DeliveryRouteMap = ({
         setLocating(false);
         setLocationError("Location permission is needed for rider navigation.");
       },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
+      { enableHighAccuracy: true, maximumAge: 4000, timeout: 20000 },
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
@@ -160,9 +196,8 @@ const DeliveryRouteMap = ({
       })
       .catch(() => {
         if (cancelled) return;
-        const fallbackDistance = L.latLng(originPoint).distanceTo(
-          L.latLng(destinationPoint),
-        ) / 1000;
+        const fallbackDistance =
+          L.latLng(originPoint).distanceTo(L.latLng(destinationPoint)) / 1000;
         const fallback = {
           coords: [originPoint, destinationPoint],
           distanceKm: fallbackDistance,
@@ -205,7 +240,7 @@ const DeliveryRouteMap = ({
 
   return (
     <div className="delivery-route-map" style={{ height }}>
-      {locating && (
+      {locating && !originPoint && (
         <div className="delivery-route-loading">Finding rider location...</div>
       )}
       <MapContainer
@@ -233,12 +268,19 @@ const DeliveryRouteMap = ({
         )}
         {originPoint && <Marker position={originPoint} icon={originIcon} />}
         <Marker position={destinationPoint} icon={destinationIcon} />
-        <FitRoute points={route?.coords?.length ? route.coords : [originPoint, destinationPoint]} />
+        <FitRoute
+          points={
+            route?.coords?.length
+              ? route.coords
+              : [originPoint, destinationPoint]
+          }
+        />
         <ResizeSync />
       </MapContainer>
       {route && (
         <div className="delivery-route-pill">
-          {formatDistance(route.distanceKm)} by road · about {route.durationMinutes} min
+          {formatDistance(route.distanceKm)} by road · about{" "}
+          {route.durationMinutes} min
         </div>
       )}
       {useCurrentLocation && accuracyMeters !== null && (
