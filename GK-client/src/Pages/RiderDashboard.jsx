@@ -5,6 +5,8 @@ import {
   FaMotorcycle,
   FaPhoneAlt,
   FaRedo,
+  FaTimes,
+  FaLock,
 } from "react-icons/fa";
 import API from "../api/api";
 import DeliveryRouteMap from "../components/DeliveryRouteMap";
@@ -27,13 +29,26 @@ const dateTime = (value) =>
 const statusClass = (status = "Pending") =>
   `admin-status admin-status--${status.toLowerCase().replaceAll(" ", "-")}`;
 
+// Client-side login throttling. This is a UX speed bump, NOT real security —
+// it just stops accidental rapid retries from hammering the API. The actual
+// gate against random people creating rider accounts has to live on the
+// backend: it must reject /auth/rider-login for unknown emails unless the
+// access_code sent below matches a code issued by the restaurant admin, and
+// should rate-limit failed attempts per IP/email server-side too.
+const LOGIN_LOCKOUT_AFTER = 4;
+const LOGIN_LOCKOUT_MS = 45_000;
+
 const RiderDashboard = () => {
   const [needsLogin, setNeedsLogin] = useState(!localStorage.getItem("token"));
   const [loginForm, setLoginForm] = useState({
     email: "",
     password: "",
     name: "",
+    accessCode: "",
   });
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(null);
+  const [lockRemaining, setLockRemaining] = useState(0);
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [toast, setToast] = useState(null);
@@ -46,6 +61,21 @@ const RiderDashboard = () => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 2800);
   };
+
+  // Tick the lockout countdown so the button re-enables itself without a
+  // page refresh.
+  useEffect(() => {
+    if (!lockedUntil) return undefined;
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, lockedUntil - Date.now());
+      setLockRemaining(remaining);
+      if (remaining <= 0) {
+        setLockedUntil(null);
+        setLoginAttempts(0);
+      }
+    }, 250);
+    return () => clearInterval(interval);
+  }, [lockedUntil]);
 
   const sortedOrders = useMemo(
     () =>
@@ -119,15 +149,45 @@ const RiderDashboard = () => {
 
   const login = async (event) => {
     event.preventDefault();
+    if (lockedUntil && lockedUntil > Date.now()) return;
+
+    const email = loginForm.email.trim().toLowerCase();
+    const password = loginForm.password;
+    const accessCode = loginForm.accessCode.trim();
+
+    if (!email || !password || !accessCode) {
+      showToast("Email, password, and access code are all required", "error");
+      return;
+    }
+    if (password.length < 8) {
+      showToast("Password must be at least 8 characters", "error");
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await API.post("/auth/rider-login", loginForm);
+      const response = await API.post("/auth/rider-login", {
+        email,
+        password,
+        name: loginForm.name.trim(),
+        access_code: accessCode,
+      });
       localStorage.setItem("token", response.data.token);
       showToast(response.data.message || "Rider login successful");
       setNeedsLogin(false);
+      setLoginAttempts(0);
       await fetchOrders();
     } catch (error) {
-      showToast(error.response?.data?.message || "Unable to login", "error");
+      const attempts = loginAttempts + 1;
+      setLoginAttempts(attempts);
+      if (attempts >= LOGIN_LOCKOUT_AFTER) {
+        setLockedUntil(Date.now() + LOGIN_LOCKOUT_MS);
+      }
+      showToast(
+        error.response?.data?.message ||
+          "Unable to login. Check your email, password, and access code.",
+        "error",
+      );
     } finally {
       setLoading(false);
     }
@@ -162,18 +222,20 @@ const RiderDashboard = () => {
   };
 
   if (needsLogin) {
+    const isLocked = Boolean(lockedUntil && lockedUntil > Date.now());
     return (
       <div className="admin-app admin-login-screen rider-app">
-        <form className="admin-login-card" onSubmit={login}>
+        <form className="admin-login-card rider-login-card" onSubmit={login}>
           <div className="admin-brand admin-login-brand">
             <span>
               <FaMotorcycle />
             </span>
             <strong>Rider Login</strong>
           </div>
-          <p>
-            Login as a rider. If this rider email is new, the account is created
-            automatically.
+          <p className="rider-login-notice">
+            <FaLock aria-hidden="true" />
+            Rider accounts are issued by the restaurant. You'll need the access
+            code your admin gave you — this login isn't open to self-signup.
           </p>
           <label>
             Name
@@ -182,6 +244,7 @@ const RiderDashboard = () => {
               onChange={(event) =>
                 setLoginForm({ ...loginForm, name: event.target.value })
               }
+              autoComplete="name"
             />
           </label>
           <label>
@@ -193,6 +256,7 @@ const RiderDashboard = () => {
               onChange={(event) =>
                 setLoginForm({ ...loginForm, email: event.target.value })
               }
+              autoComplete="email"
             />
           </label>
           <label>
@@ -200,15 +264,42 @@ const RiderDashboard = () => {
             <input
               type="password"
               required
+              minLength={8}
               value={loginForm.password}
               onChange={(event) =>
                 setLoginForm({ ...loginForm, password: event.target.value })
               }
+              autoComplete="current-password"
             />
           </label>
-          <button className="admin-primary" type="submit" disabled={loading}>
-            {loading ? "Checking..." : "Login as rider"}
+          <label>
+            Access code
+            <input
+              required
+              value={loginForm.accessCode}
+              onChange={(event) =>
+                setLoginForm({ ...loginForm, accessCode: event.target.value })
+              }
+              placeholder="Given to you by the restaurant"
+              autoComplete="off"
+            />
+          </label>
+          <button
+            className="admin-primary"
+            type="submit"
+            disabled={loading || isLocked}
+          >
+            {isLocked
+              ? `Try again in ${Math.ceil(lockRemaining / 1000)}s`
+              : loading
+                ? "Checking..."
+                : "Login as rider"}
           </button>
+          {isLocked && (
+            <p className="rider-login-lock-note">
+              Too many failed attempts. Locked briefly to protect this account.
+            </p>
+          )}
         </form>
         {toast && (
           <div className={`admin-toast admin-toast--${toast.type}`}>
@@ -274,23 +365,43 @@ const RiderDashboard = () => {
           onClick={() => setSelectedOrder(null)}
         >
           <div
-            className={`rider-modal ${
-              selectedOrder.rider_id ? "rider-modal--picked" : ""
-            }`}
+            className="rider-modal"
             onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              className="rider-modal-close"
-              onClick={() => setSelectedOrder(null)}
-            >
-              Close
-            </button>
-            <RiderOrderDetail
-              order={selectedOrder}
-              onUpdate={updateOrder}
-              actionOrderId={actionOrderId}
-            />
+            <div className="rider-modal-header">
+              <div>
+                <p>{dateTime(selectedOrder.created_at)}</p>
+                <h2>Order #{selectedOrder.id}</h2>
+              </div>
+              <div className="rider-modal-header-right">
+                <span className={statusClass(selectedOrder.status)}>
+                  {selectedOrder.status || "Pending"}
+                </span>
+                <button
+                  type="button"
+                  className="rider-modal-close"
+                  onClick={() => setSelectedOrder(null)}
+                  aria-label="Close"
+                >
+                  <FaTimes />
+                </button>
+              </div>
+            </div>
+
+            <div className="rider-modal-body">
+              <RiderOrderDetail order={selectedOrder} />
+            </div>
+
+            {/* Sticky footer — always visible over the map/details, on
+                every screen size, so the call/navigate/pick/delivered
+                buttons can never get scrolled out of reach. */}
+            <div className="rider-modal-footer">
+              <RiderOrderActions
+                order={selectedOrder}
+                onUpdate={updateOrder}
+                actionOrderId={actionOrderId}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -304,30 +415,40 @@ const RiderDashboard = () => {
   );
 };
 
-const RiderOrderDetail = ({ order, onUpdate, actionOrderId }) => {
-  const items = parseItems(order.items);
+// Call / navigate / pick / deliver — rendered once, in the sticky footer,
+// shared by both the "not yet picked" and "on the way" states so the
+// control set never jumps around depending on order status.
+const RiderOrderActions = ({ order, onUpdate, actionOrderId }) => {
   const actionBusy = actionOrderId === order.id;
   const hasCoordinates = order.delivery_lat && order.delivery_lng;
-  const picked = Boolean(order.rider_id);
   const mapsUrl = hasCoordinates
     ? `https://www.google.com/maps/dir/?api=1&destination=${order.delivery_lat},${order.delivery_lng}`
     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
         order.location || "",
       )}`;
 
-  const actions = (
-    <div className="admin-delivery-actions">
+  return (
+    <div className="rider-actions-row">
       {order.phone_number && (
-        <a href={`tel:${order.phone_number}`}>
+        <a
+          className="rider-action-btn rider-action-btn--ghost"
+          href={`tel:${order.phone_number}`}
+        >
           <FaPhoneAlt /> Call
         </a>
       )}
-      <a href={mapsUrl} target="_blank" rel="noreferrer">
+      <a
+        className="rider-action-btn rider-action-btn--ghost"
+        href={mapsUrl}
+        target="_blank"
+        rel="noreferrer"
+      >
         <FaMapMarkerAlt /> Navigate
       </a>
       {!order.rider_id && (
         <button
           type="button"
+          className="rider-action-btn rider-action-btn--primary"
           onClick={() => onUpdate(order, "pick")}
           disabled={actionBusy}
         >
@@ -337,7 +458,7 @@ const RiderOrderDetail = ({ order, onUpdate, actionOrderId }) => {
       {order.rider_id && order.status !== "Delivered" && (
         <button
           type="button"
-          className="admin-delivered-btn"
+          className="rider-action-btn rider-action-btn--success"
           onClick={() => {
             const confirmed = window.confirm(
               "Are you sure this order has been delivered to the customer?",
@@ -349,8 +470,21 @@ const RiderOrderDetail = ({ order, onUpdate, actionOrderId }) => {
           <FaCheck /> {actionBusy ? "Saving..." : "Delivered"}
         </button>
       )}
+      {order.rider_id && order.status === "Delivered" && (
+        <span className="rider-action-done">✅ Delivered</span>
+      )}
     </div>
   );
+};
+
+// One consistent layout for every order: a full-bleed map right at the top
+// (edge to edge, no wrapping padding), then a scrollable content column
+// below it. Buttons live in the sticky footer outside this component, so
+// they're never at risk of ending up hidden underneath the map.
+const RiderOrderDetail = ({ order }) => {
+  const items = parseItems(order.items);
+  const hasCoordinates = order.delivery_lat && order.delivery_lng;
+  const picked = Boolean(order.rider_id);
 
   const notes = (order.order_instructions || order.order_preferences) && (
     <div className="admin-order-notes">
@@ -369,87 +503,52 @@ const RiderOrderDetail = ({ order, onUpdate, actionOrderId }) => {
     </div>
   );
 
-  const itemsList = (
+  return (
     <>
-      <h3>Items</h3>
-      <div className="admin-list">
-        {items.map((item, index) => {
-          const name = item.name || item.menu_name || item.item_name || "Item";
-          const quantity = Number(item.quantity || item.qty || 1);
-          const price = Number(item.price || item.unit_price || 0);
-          return (
-            <article className="admin-list-row" key={`${name}-${index}`}>
-              <div>
-                <h3>{name}</h3>
-                <p>
-                  Quantity: {quantity} - Unit: {currency(price)}
-                  {item.item_type === "addon" ? " - Add-on" : ""}
-                </p>
-              </div>
-              <strong>{currency(price * quantity)}</strong>
-            </article>
-          );
-        })}
-      </div>
-    </>
-  );
-
-  if (picked) {
-    return (
-      <div className="rider-detail-card rider-detail-card--active-trip">
-        <div className="rider-trip-map-shell">
-          {hasCoordinates ? (
-            <DeliveryRouteMap
-              destination={{ lat: order.delivery_lat, lng: order.delivery_lng }}
-              useCurrentLocation
-              originLabel="Rider"
-              destinationLabel="Customer"
-              height="min(66vh, 620px)"
-            />
-          ) : (
-            <div className="admin-empty">
-              <strong>Map location unavailable</strong>
-              <p>
-                Use the saved address and call the customer before delivery.
-              </p>
-            </div>
-          )}
-
-          <div className="rider-trip-summary">
-            <div className="rider-detail-head">
-              <div>
-                <p>{dateTime(order.created_at)}</p>
-                <h2>Order #{order.id}</h2>
-              </div>
-              <span className={statusClass(order.status)}>
-                {order.status || "Pending"}
-              </span>
-            </div>
-
-            <div className="rider-trip-mini-grid">
-              <p>
-                <span>Customer</span>
-                {order.customer_name || "Customer"}
-              </p>
-              <p>
-                <span>Phone</span>
-                {order.phone_number || "Not available"}
-              </p>
-              <p>
-                <span>Total</span>
-                {currency(order.total_price)}
-              </p>
-            </div>
-
-            {actions}
+      <div className="rider-map-shell">
+        {hasCoordinates ? (
+          <DeliveryRouteMap
+            destination={{ lat: order.delivery_lat, lng: order.delivery_lng }}
+            useCurrentLocation={picked}
+            originLabel={picked ? "Rider" : "Restaurant"}
+            destinationLabel="Customer"
+            height="100%"
+          />
+        ) : (
+          <div className="admin-empty rider-map-empty">
+            <strong>Map location unavailable</strong>
+            <p>Use the saved address and call the customer before delivery.</p>
           </div>
-        </div>
+        )}
+      </div>
 
-        <p className="rider-map-help">
-          The blue marker is your phone location and the red marker is the
-          customer location. If GPS accuracy is low, use Google Maps navigation
-          from the button above.
-        </p>
+      <div className="rider-detail-content">
+        {picked && (
+          <p className="rider-map-help">
+            Blue marker is your phone's current location, red marker is the
+            customer. If GPS accuracy looks off, use the Navigate button for
+            Google Maps turn-by-turn instead.
+          </p>
+        )}
+
+        <div className="admin-detail-grid rider-detail-grid">
+          <p>
+            <span>Customer</span>
+            {order.customer_name || "Customer"}
+          </p>
+          <p>
+            <span>Phone</span>
+            {order.phone_number || "Not available"}
+          </p>
+          <p>
+            <span>Total</span>
+            {currency(order.total_price)}
+          </p>
+          <p>
+            <span>Payment</span>
+            {order.payment_method || "Cash on Delivery"}
+          </p>
+        </div>
 
         <p className="admin-address">
           <span>Delivery address</span>
@@ -457,62 +556,30 @@ const RiderOrderDetail = ({ order, onUpdate, actionOrderId }) => {
         </p>
 
         {notes}
-        {itemsList}
-      </div>
-    );
-  }
 
-  return (
-    <div className="rider-detail-card">
-      <div className="rider-detail-head">
-        <div>
-          <p>{dateTime(order.created_at)}</p>
-          <h2>Order #{order.id}</h2>
+        <h3>Items</h3>
+        <div className="admin-list">
+          {items.map((item, index) => {
+            const name =
+              item.name || item.menu_name || item.item_name || "Item";
+            const quantity = Number(item.quantity || item.qty || 1);
+            const price = Number(item.price || item.unit_price || 0);
+            return (
+              <article className="admin-list-row" key={`${name}-${index}`}>
+                <div>
+                  <h3>{name}</h3>
+                  <p>
+                    Quantity: {quantity} - Unit: {currency(price)}
+                    {item.item_type === "addon" ? " - Add-on" : ""}
+                  </p>
+                </div>
+                <strong>{currency(price * quantity)}</strong>
+              </article>
+            );
+          })}
         </div>
-        <span className={statusClass(order.status)}>
-          {order.status || "Pending"}
-        </span>
       </div>
-
-      <div className="admin-detail-grid">
-        <p>
-          <span>Customer</span>
-          {order.customer_name || "Customer"}
-        </p>
-        <p>
-          <span>Phone</span>
-          {order.phone_number || "Not available"}
-        </p>
-        <p>
-          <span>Total</span>
-          {currency(order.total_price)}
-        </p>
-        <p>
-          <span>Payment</span>
-          {order.payment_method || "Cash on Delivery"}
-        </p>
-      </div>
-
-      <p className="admin-address">
-        <span>Delivery address</span>
-        {order.location || "Not available"}
-      </p>
-
-      {notes}
-      {actions}
-
-      {hasCoordinates && (
-        <DeliveryRouteMap
-          destination={{ lat: order.delivery_lat, lng: order.delivery_lng }}
-          useCurrentLocation
-          originLabel="Rider"
-          destinationLabel="Customer"
-          height={340}
-        />
-      )}
-
-      {itemsList}
-    </div>
+    </>
   );
 };
 
