@@ -163,7 +163,81 @@ const verifyPayment = async (req, res) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Webhook — Razorpay calls this server-to-server whenever a payment event
+// happens, independent of whether the customer's browser is even still
+// open. This is the durable source of truth: the frontend's /verify call
+// covers the common case (customer waits for confirmation), this covers
+// the edge cases (tab closed mid-payment, network dropped after paying,
+// app crashed, etc) that /verify would otherwise miss entirely.
+//
+// IMPORTANT: req.body here must be the raw, unparsed request Buffer —
+// Razorpay signs the exact raw bytes it sent, so if a JSON body-parser
+// has already run on this route, the signature check below will always
+// fail. See the mounting instructions where this is wired into server.js.
+// ---------------------------------------------------------------------------
+const handleWebhook = async (req, res) => {
+  try {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error("RAZORPAY_WEBHOOK_SECRET is not configured.");
+      return res.status(500).send("Webhook not configured");
+    }
+
+    const signature = req.headers["x-razorpay-signature"];
+    if (!signature) {
+      return res.status(400).send("Missing signature");
+    }
+
+    const rawBody = req.body; // Buffer — see the note above.
+    const expectedSignature = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(rawBody)
+      .digest("hex");
+
+    if (expectedSignature !== signature) {
+      console.warn("Razorpay webhook signature mismatch — ignoring.");
+      return res.status(400).send("Invalid signature");
+    }
+
+    const event = JSON.parse(rawBody.toString("utf8"));
+    const payment = event?.payload?.payment?.entity;
+
+    // Only these two matter for keeping `payments` accurate. Anything else
+    // (order.paid, refund events, etc) is safely ignored for now — add a
+    // case here if you start needing them.
+    if (payment && (event.event === "payment.captured" || event.event === "payment.failed")) {
+      const status = event.event === "payment.captured" ? "success" : "failed";
+
+      await pool.query(
+        `insert into payments
+           (razorpay_order_id, razorpay_payment_id, amount, phone_number, user_id, status)
+         values ($1, $2, $3, $4, $5, $6)
+         on conflict (razorpay_payment_id)
+         do update set status = excluded.status`,
+        [
+          payment.order_id,
+          payment.id,
+          Number.isFinite(payment.amount) ? payment.amount / 100 : null,
+          payment.contact || null,
+          payment.notes?.user_id || null,
+          status,
+        ],
+      );
+    }
+
+    // Razorpay just needs a fast 2xx to know the event was received —
+    // it retries with backoff on anything else, which we want if our own
+    // handling above throws.
+    res.status(200).json({ received: true });
+  } catch (err) {
+    console.error("handleWebhook error:", err);
+    res.status(500).send("Webhook handler error");
+  }
+};
+
 module.exports = {
   createPaymentOrder,
   verifyPayment,
+  handleWebhook,
 };

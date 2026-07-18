@@ -17,13 +17,13 @@ import {
 } from "../../utils/geolocation";
 // TODO: replace with your real backend path
 const ORDER_API_ENDPOINT =
-  "https://gk-kitchen.onrender.com/api/orders/place-order";
+  "http://localhost:5000/api/orders/place-order";
 
 // Razorpay endpoints — match the routes mounted at app.use("/api/payment", ...)
 const PAYMENT_CREATE_ORDER_ENDPOINT =
-  "https://gk-kitchen.onrender.com/api/payment/create-order";
+  "http://localhost:5000/api/payment/create-order";
 const PAYMENT_VERIFY_ENDPOINT =
-  "https://gk-kitchen.onrender.com/api/payment/verify";
+  "http://localhost:5000/api/payment/verify";
 
 // Fallback only used if MenuPage didn't pass a radius down (shouldn't happen
 // in normal flow — MenuPage always computes this from restaurant config).

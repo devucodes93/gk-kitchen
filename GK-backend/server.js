@@ -11,20 +11,25 @@ const pool = require("./src/config/db.js");
 const userRoutes = require("./src/routes/authRoutes.js");
 const passport = require("./src/config/passport");
 const SignupRoute = require("./src/routes/signupRoutes");
-const orderRoutes = require("./src/routes/orderRoutes.js")
-const menueRoutes = require("./src/routes/menuRoutes.js")
-const adminRoutes = require("./src/routes/adminRoutes.js")
-const riderRoutes = require("./src/routes/riderRoutes.js")
-const restaurantRoutes = require("./src/routes/restaurantRoutes.js")
-const paymentRoutes = require("./src/routes/paymentRoutes.js")
-const { ensureUserColumns } = require("./src/controller/signupController.js")
+const orderRoutes = require("./src/routes/orderRoutes.js");
+const menueRoutes = require("./src/routes/menuRoutes.js");
+const adminRoutes = require("./src/routes/adminRoutes.js");
+const riderRoutes = require("./src/routes/riderRoutes.js");
+const restaurantRoutes = require("./src/routes/restaurantRoutes.js");
+const paymentRoutes = require("./src/routes/paymentRoutes.js");
+const { ensureUserColumns } = require("./src/controller/signupController.js");
 
 const app = express();
 
 app.use(cors());
 // app.use(express.json());
 app.use(express.json({ limit: "20mb" }));
-
+// 1. Webhook FIRST, with express.raw() — before express.json().
+app.post(
+  "/api/payment/webhook",
+  express.raw({ type: "application/json" }),
+  paymentRoutes.handleWebhook,
+);
 
 // ─── PostgreSQL ───────────────────────────────────────────────────────────────
 (async () => {
@@ -43,13 +48,13 @@ app.use(
     secret: process.env.SESSION_SECRET || "restaurant",
     resave: false,
     saveUninitialized: false,
-  })
+  }),
 );
 app.use(passport.initialize());
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use("/api/auth", SignupRoute);   // POST /api/auth/register, POST /api/auth/login
-app.use("/api/auth", userRoutes);       // GET  /api/auth/google, GET /api/auth/google/callback
+app.use("/api/auth", SignupRoute); // POST /api/auth/register, POST /api/auth/login
+app.use("/api/auth", userRoutes); // GET  /api/auth/google, GET /api/auth/google/callback
 app.use("/api/orders", orderRoutes);
 app.use("/api/payment", paymentRoutes);
 
@@ -78,11 +83,19 @@ async function fetchFromApify() {
 
   const { items } = await client.dataset(run.defaultDatasetId).listItems();
   console.log("Raw Apify item keys:", Object.keys(items[0] ?? {}));
-  console.log("Sample post keys:", Object.keys(items[0]?.latestPosts?.[0] ?? {}));
+  console.log(
+    "Sample post keys:",
+    Object.keys(items[0]?.latestPosts?.[0] ?? {}),
+  );
 
   cachedPosts = (items[0]?.latestPosts ?? []).map((post, i) => ({
     id: post.id ?? `post_${i}`,
-    url: post.displayUrl || post.imageUrl || post.media_url || post.thumbnailUrl || "",
+    url:
+      post.displayUrl ||
+      post.imageUrl ||
+      post.media_url ||
+      post.thumbnailUrl ||
+      "",
     caption: post.caption ?? "",
     likes: post.likesCount ?? 0,
     permalink: post.url ?? "",
@@ -110,7 +123,10 @@ app.get("/api/proxy-image", async (req, res) => {
   try {
     const response = await axios.get(decodeURIComponent(url), {
       responseType: "stream",
-      headers: { "User-Agent": "Mozilla/5.0", Referer: "https://www.instagram.com/" },
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: "https://www.instagram.com/",
+      },
     });
     res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
