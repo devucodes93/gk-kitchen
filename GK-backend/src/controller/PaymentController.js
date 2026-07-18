@@ -1,5 +1,8 @@
 const crypto = require("crypto");
 const Razorpay = require("razorpay");
+// Your existing pg Pool from db.js — adjust the path if it lives somewhere
+// other than one level up.
+const pool = require("../config/db");
 
 const getRazorpay = () => {
   const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } = process.env;
@@ -47,7 +50,12 @@ const createPaymentOrder = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Payment order created successfully",
-      data: paymentOrder,
+      data: {
+        ...paymentOrder,
+        // The frontend needs the *public* key id to open Razorpay Checkout.
+        // Never send RAZORPAY_KEY_SECRET here.
+        key_id: process.env.RAZORPAY_KEY_ID,
+      },
     });
   } catch (err) {
     console.error("createPaymentOrder error:", err);
@@ -60,7 +68,14 @@ const createPaymentOrder = async (req, res) => {
 
 const verifyPayment = async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      amount,
+      phone_number,
+    } = req.body;
+
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return res.status(400).json({
         success: false,
@@ -88,6 +103,47 @@ const verifyPayment = async (req, res) => {
       });
     }
 
+    // Signature checks out — the payment is genuinely successful. Save it
+    // now, independent of whatever happens next (e.g. the food-order
+    // record failing to save afterward): this row is the source of truth
+    // that the customer was charged and can be reconciled against later.
+    const amountValue = Number(amount);
+    let savedPayment = null;
+
+    try {
+      const insertResult = await pool.query(
+        `insert into payments
+           (razorpay_order_id, razorpay_payment_id, amount, phone_number, user_id, status)
+         values ($1, $2, $3, $4, $5, 'success')
+         on conflict (razorpay_payment_id) do nothing
+         returning *`,
+        [
+          razorpay_order_id,
+          razorpay_payment_id,
+          Number.isFinite(amountValue) ? amountValue : null,
+          phone_number || null,
+          req.user?.id || null,
+        ],
+      );
+
+      savedPayment = insertResult.rows[0] || null;
+
+      if (!savedPayment) {
+        // ON CONFLICT DO NOTHING returns no row when this payment_id was
+        // already saved (e.g. the frontend retried the verify call) — that
+        // isn't an error, just fetch the row that's already there.
+        const existing = await pool.query(
+          "select * from payments where razorpay_payment_id = $1",
+          [razorpay_payment_id],
+        );
+        savedPayment = existing.rows[0] || null;
+      }
+    } catch (insertError) {
+      // The payment itself is still valid and verified — don't fail the
+      // whole request over a DB write problem, just log it for follow-up.
+      console.error("Failed to save payment record:", insertError);
+    }
+
     res.json({
       success: true,
       message: "Payment verified successfully.",
@@ -95,6 +151,7 @@ const verifyPayment = async (req, res) => {
         razorpay_order_id,
         razorpay_payment_id,
         razorpay_signature,
+        payment: savedPayment,
       },
     });
   } catch (err) {

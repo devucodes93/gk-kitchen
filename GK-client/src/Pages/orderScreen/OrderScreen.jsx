@@ -17,11 +17,23 @@ import {
 } from "../../utils/geolocation";
 // TODO: replace with your real backend path
 const ORDER_API_ENDPOINT =
-  "https://gk-kitchen.onrender.com/api/orders/place-order";
+  "http://localhost:5000/api/orders/place-order";
+
+// Razorpay endpoints — match the routes mounted at app.use("/api/payment", ...)
+const PAYMENT_CREATE_ORDER_ENDPOINT =
+  "http://localhost:5000/api/payment/create-order";
+const PAYMENT_VERIFY_ENDPOINT =
+  "http://localhost:5000/api/payment/verify";
 
 // Fallback only used if MenuPage didn't pass a radius down (shouldn't happen
 // in normal flow — MenuPage always computes this from restaurant config).
 const DEFAULT_DELIVERY_RADIUS_KM = 10;
+
+// TEMP SWITCH — set to `true` to bring the delivery-radius restriction back.
+// While `false`, customers can order (and pay) from any distance; the
+// "you're outside our delivery area" notice and the button-disabling both
+// stop firing. Nothing else about the checkout flow changes.
+const DELIVERY_RADIUS_ENFORCED = false;
 
 // ---------------------------------------------------------------------------
 // Security / integrity helpers
@@ -117,6 +129,34 @@ const slugify = (name) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
+// ---------------------------------------------------------------------------
+// Razorpay Checkout script loader
+//
+// Loaded lazily (only when the customer actually picks "Pay Online"), and
+// cached so repeated attempts don't inject the script tag more than once.
+// If it fails to load, the promise resets so a later retry can try again
+// (e.g. the first attempt happened while offline).
+// ---------------------------------------------------------------------------
+let razorpayScriptPromise = null;
+const loadRazorpayScript = () => {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (window.Razorpay) return Promise.resolve(true);
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+
+  razorpayScriptPromise = new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => {
+      razorpayScriptPromise = null; // allow a retry on the next attempt
+      resolve(false);
+    };
+    document.body.appendChild(script);
+  });
+
+  return razorpayScriptPromise;
+};
+
 const Spinner = () => (
   <svg className="order-spinner" viewBox="0 0 24 24" aria-hidden="true">
     <circle cx="12" cy="12" r="9.5" strokeWidth="2.5" />
@@ -155,7 +195,7 @@ const OrderScreen = ({
 
   const [quantity, setQuantity] = useState(1);
   const [cart, setCart] = useState(() => readCartFromStorage(initialCart));
-  const [paymentMethod, setPaymentMethod] = useState("cod");
+  const [paymentMethod, setPaymentMethod] = useState("cod"); // "cod" | "online"
   const [preferences, setPreferences] = useState([]);
   const [instructions, setInstructions] = useState("");
   const [location, setLocation] = useState(null);
@@ -286,7 +326,9 @@ const OrderScreen = ({
   const effectiveDistanceKm = selectedDistanceKm ?? distanceKm;
 
   const outOfDeliveryZone =
-    effectiveDistanceKm !== null && effectiveDistanceKm > deliveryRadiusKm;
+    DELIVERY_RADIUS_ENFORCED &&
+    effectiveDistanceKm !== null &&
+    effectiveDistanceKm > deliveryRadiusKm;
 
   // If addons that were previously selected are no longer part of the
   // active cart (e.g. the item that offered them was removed), drop them so
@@ -450,6 +492,14 @@ const OrderScreen = ({
     };
   }, []);
 
+  // Preload the Razorpay checkout script as soon as the customer reaches
+  // the payment step, so picking "Pay Online" doesn't have to wait on it.
+  useEffect(() => {
+    if (checkoutStep === "delivery") {
+      loadRazorpayScript();
+    }
+  }, [checkoutStep]);
+
   const handleSelectMore = () => {
     const nextCart = cart.length ? cart : [{ ...item, quantity }];
     setCart(nextCart);
@@ -596,6 +646,262 @@ const OrderScreen = ({
   const handleBackToReview = () => {
     setCheckoutStep("review");
   };
+
+  // ---------------------------------------------------------------------
+  // Final order submission — shared by both COD and online payment. Takes
+  // whatever payment-specific fields apply (paymentStatus, and for online
+  // orders the Razorpay identifiers) and does the idempotent POST to the
+  // actual food-order endpoint.
+  // ---------------------------------------------------------------------
+  const submitOrder = async (extraPaymentFields, trimmedPhone) => {
+    const token = localStorage.getItem("token");
+
+    // Idempotency key: reuse it if this is a retry of the *same* order
+    // (nothing material changed), mint a new one if the order actually
+    // changed. The backend should treat repeat requests with the same
+    // key as one order, no matter how many times the network makes us
+    // resend it.
+    const signature = getCartSignature();
+    if (
+      idempotencySignatureRef.current !== signature ||
+      !idempotencyKeyRef.current
+    ) {
+      idempotencyKeyRef.current = generateIdempotencyKey();
+      idempotencySignatureRef.current = signature;
+    }
+
+    const storedUser = JSON.parse(localStorage.getItem("user") || "null") || {};
+
+    const payload = {
+      idempotencyKey: idempotencyKeyRef.current,
+      userId: storedUser.id || storedUser.userId || null,
+      userInfo: storedUser,
+      item: {
+        name: activeCart[0]?.name || item.name,
+        price: activeCart[0]?.price || item.price,
+      },
+      cartItems: activeCart,
+      quantity: cartCount,
+      pricing: {
+        unitPrice: activeCart[0]?.price || item.price,
+        subtotal,
+        addonsSubtotal,
+        deliveryFee,
+        gstPercent,
+        gstAmount,
+        distanceKm,
+        total,
+      },
+      addons: addonSelections,
+      paymentMethod,
+      ...extraPaymentFields,
+      phone_number: trimmedPhone,
+      preferences,
+      instructions: sanitizeInstructions(instructions),
+      location,
+    };
+
+    // Bound the request with a timeout so a hung connection can never
+    // leave the UI (or the user) stuck indefinitely.
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const res = await fetch(ORDER_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKeyRef.current,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        // Non-JSON body — fall through to the status-based error below.
+      }
+
+      if (!res.ok) {
+        throw new Error(data.message || `Order request failed (${res.status})`);
+      }
+
+      setOrderId(data.data?.id || data.orderId || data.id || "—");
+      setStatus("success");
+      writeCartToStorage([]); // order placed — clear the persisted cart
+      // Intentionally leave submitLockRef.current === true: the order is
+      // placed and this screen is done, so there's nothing left to retry.
+    } catch (error) {
+      const timedOut = error.name === "AbortError";
+      const message = timedOut
+        ? "The request timed out. If the order actually went through, it'll appear under Past orders — please check there before retrying."
+        : error.message || "Couldn't place the order. Please try again.";
+
+      // If this was an online order, payment already succeeded on
+      // Razorpay's side — throw so the caller can surface a "contact
+      // support" message instead of a generic "try again", and keep the
+      // submit lock engaged so the customer can't accidentally pay twice.
+      if (extraPaymentFields?.paymentMethod === "online") {
+        throw new Error(message);
+      }
+
+      setErrorMessage(message);
+      setStatus("error");
+      // Release the lock so the user can retry. The idempotency key is left
+      // untouched, so a retry of the same order is safe to dedupe
+      // server-side even if the earlier attempt actually landed.
+      submitLockRef.current = false;
+    } finally {
+      clearTimeout(timeoutId);
+      abortControllerRef.current = null;
+    }
+  };
+
+  // Verifies the Razorpay payment signature server-side, then — only once
+  // verified — places the actual food order tagged as paid.
+  const verifyAndPlaceOrder = async (razorpayResponse, trimmedPhone) => {
+    const token = localStorage.getItem("token");
+
+    const verifyRes = await fetch(PAYMENT_VERIFY_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        razorpay_order_id: razorpayResponse.razorpay_order_id,
+        razorpay_payment_id: razorpayResponse.razorpay_payment_id,
+        razorpay_signature: razorpayResponse.razorpay_signature,
+        amount: Number(total.toFixed(2)),
+        phone_number: trimmedPhone,
+      }),
+    });
+
+    const verifyData = await verifyRes.json().catch(() => ({}));
+    if (!verifyRes.ok || !verifyData?.success) {
+      throw new Error(
+        verifyData?.message ||
+          "Payment verification failed. Please contact support before retrying.",
+      );
+    }
+
+    await submitOrder(
+      {
+        paymentMethod: "online",
+        paymentStatus: "paid",
+        razorpayOrderId: razorpayResponse.razorpay_order_id,
+        razorpayPaymentId: razorpayResponse.razorpay_payment_id,
+      },
+      trimmedPhone,
+    );
+  };
+
+  // Kicks off the Razorpay Checkout flow: create a payment order on the
+  // backend, open the modal, and on success verify + place the order.
+  const startOnlinePayment = async (trimmedPhone) => {
+    try {
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        throw new Error(
+          "Couldn't load the payment gateway. Please check your connection and try again.",
+        );
+      }
+
+      const token = localStorage.getItem("token");
+      const orderRes = await fetch(PAYMENT_CREATE_ORDER_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          amount: Number(total.toFixed(2)),
+          currency: "INR",
+          notes: { phone: trimmedPhone },
+        }),
+      });
+
+      const orderData = await orderRes.json().catch(() => ({}));
+      if (!orderRes.ok || !orderData?.data?.id) {
+        throw new Error(
+          orderData?.message || "Couldn't start the payment. Please try again.",
+        );
+      }
+
+      const razorpayOrder = orderData.data;
+      if (!razorpayOrder.key_id) {
+        // The create-order endpoint needs to include the Razorpay key_id
+        // in its response for Checkout to open — see paymentController.js.
+        throw new Error(
+          "Payment gateway isn't configured correctly. Please try Cash on Delivery, or contact us.",
+        );
+      }
+
+      await new Promise((resolve, reject) => {
+        const rzp = new window.Razorpay({
+          key: razorpayOrder.key_id,
+          amount: razorpayOrder.amount,
+          currency: razorpayOrder.currency,
+          name: "GK Kitchen",
+          description: `Order for ${cartCount} item${cartCount === 1 ? "" : "s"}`,
+          order_id: razorpayOrder.id,
+          prefill: { contact: trimmedPhone },
+          theme: { color: "#e2574c" },
+          handler: async (response) => {
+            try {
+              await verifyAndPlaceOrder(response, trimmedPhone);
+              resolve();
+            } catch (err) {
+              // By the time this handler fires, Razorpay has already taken
+              // the payment — never suggest retrying the payment itself.
+              const supportError = new Error(
+                `We received your payment (ID: ${response.razorpay_payment_id}) but couldn't confirm the order automatically. Please contact us with this payment ID — do not pay again.`,
+              );
+              supportError.paymentSucceeded = true;
+              reject(supportError);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              reject(new Error("__PAYMENT_CANCELLED__"));
+            },
+          },
+        });
+
+        rzp.on("payment.failed", (response) => {
+          reject(
+            new Error(
+              response?.error?.description ||
+                "Payment failed. Please try again.",
+            ),
+          );
+        });
+
+        rzp.open();
+      });
+    } catch (error) {
+      if (error?.message === "__PAYMENT_CANCELLED__") {
+        // No charge was made — just unlock and let them try again.
+        setStatus("idle");
+        setErrorMessage("");
+        submitLockRef.current = false;
+        return;
+      }
+
+      setErrorMessage(
+        error.message || "Couldn't complete the payment. Please try again.",
+      );
+      setStatus("error");
+      // If the payment already succeeded, keep the lock engaged — there's
+      // nothing safe left to retry from here, only support can help.
+      submitLockRef.current = error?.paymentSucceeded ? true : false;
+    }
+  };
+
   const handlePlaceOrder = async () => {
     // 1. Synchronous re-entrancy guard — closes the race a state-only check
     //    can't close (see comment on submitLockRef above).
@@ -655,7 +961,7 @@ const OrderScreen = ({
       location.lat,
       location.lng,
     );
-    if (finalDistanceKm > deliveryRadiusKm) {
+    if (DELIVERY_RADIUS_ENFORCED && finalDistanceKm > deliveryRadiusKm) {
       setErrorMessage(
         `Sorry, this delivery point is about ${finalDistanceKm.toFixed(1)} km away, outside our ${deliveryRadiusKm} km delivery area.`,
       );
@@ -693,99 +999,13 @@ const OrderScreen = ({
     setPhoneError("");
     setErrorMessage("");
 
-    // 8. Idempotency key: reuse it if this is a retry of the *same* order
-    //    (nothing material changed), mint a new one if the order actually
-    //    changed. The backend should treat repeat requests with the same
-    //    key as one order, no matter how many times the network makes us
-    //    resend it.
-    const signature = getCartSignature();
-    if (
-      idempotencySignatureRef.current !== signature ||
-      !idempotencyKeyRef.current
-    ) {
-      idempotencyKeyRef.current = generateIdempotencyKey();
-      idempotencySignatureRef.current = signature;
-    }
-
-    const storedUser = JSON.parse(localStorage.getItem("user") || "null") || {};
-
-    const payload = {
-      idempotencyKey: idempotencyKeyRef.current,
-      userId: storedUser.id || storedUser.userId || null,
-      userInfo: storedUser,
-      item: {
-        name: activeCart[0]?.name || item.name,
-        price: activeCart[0]?.price || item.price,
-      },
-      cartItems: activeCart,
-      quantity: cartCount,
-      pricing: {
-        unitPrice: activeCart[0]?.price || item.price,
-        subtotal,
-        addonsSubtotal,
-        deliveryFee,
-        gstPercent,
-        gstAmount,
-        distanceKm,
-        total,
-      },
-      addons: addonSelections,
-      paymentMethod,
-      phone_number: trimmedPhone,
-      preferences,
-      instructions: sanitizeInstructions(instructions),
-      location,
-    };
-
-    // 9. Bound the request with a timeout so a hung connection can never
-    //    leave the UI (or the user) stuck indefinitely.
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-    try {
-      const res = await fetch(ORDER_API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKeyRef.current,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-
-      let data = {};
-      try {
-        data = await res.json();
-      } catch {
-        // Non-JSON body — fall through to the status-based error below.
-      }
-
-      if (!res.ok) {
-        throw new Error(data.message || `Order request failed (${res.status})`);
-      }
-
-      setOrderId(data.data?.id || data.orderId || data.id || "—");
-      setStatus("success");
-      writeCartToStorage([]); // order placed — clear the persisted cart
-      // Intentionally leave submitLockRef.current === true: the order is
-      // placed and this screen is done, so there's nothing left to retry.
-    } catch (error) {
-      const timedOut = error.name === "AbortError";
-      setErrorMessage(
-        timedOut
-          ? "The request timed out. If the order actually went through, it'll appear under Past orders — please check there before retrying."
-          : error.message || "Couldn't place the order. Please try again.",
-      );
-      setStatus("error");
-      // Release the lock so the user can retry. The idempotency key is left
-      // untouched (see step 8), so a retry of the same order is safe to
-      // dedupe server-side even if the earlier attempt actually landed.
-      submitLockRef.current = false;
-    } finally {
-      clearTimeout(timeoutId);
-      abortControllerRef.current = null;
+    // 8. Branch on payment method. COD goes straight to placing the order;
+    //    online payment has to clear Razorpay first, and only places the
+    //    order once the payment is verified.
+    if (paymentMethod === "online") {
+      await startOnlinePayment(trimmedPhone);
+    } else {
+      await submitOrder({ paymentStatus: "pending" }, trimmedPhone);
     }
   };
 
@@ -832,7 +1052,8 @@ const OrderScreen = ({
     outOfDeliveryZone && (
       <div className="order-block">
         <p className="order-error-text">
-          Sorry, you're about {effectiveDistanceKm.toFixed(1)} km away and we
+          
+          sorry, you're about {effectiveDistanceKm.toFixed(1)} km away and we
           currently only deliver within {deliveryRadiusKm} km. We're not
           available at your location yet.
         </p>
@@ -1355,12 +1576,17 @@ const OrderScreen = ({
 
         <button
           type="button"
-          className="order-payment-row order-payment-row--disabled"
-          disabled
+          className={`order-payment-row ${paymentMethod === "online" ? "order-payment-row--active" : ""}`}
+          onClick={() => setPaymentMethod("online")}
         >
-          <span className="order-radio" />
-          <span className="order-payment-label">Online Payment</span>
-          <span className="order-payment-tag">Coming soon</span>
+          <span
+            className="order-radio"
+            data-checked={paymentMethod === "online"}
+          />
+          <span className="order-payment-label">Pay Online</span>
+          <span className="order-payment-sub">
+            UPI, cards &amp; netbanking · secured by Razorpay
+          </span>
         </button>
       </div>
 
@@ -1572,7 +1798,13 @@ const OrderScreen = ({
                         outOfDeliveryZone
                       }
                     >
-                      {status === "submitting" ? <Spinner /> : "Place Order"}
+                      {status === "submitting" ? (
+                        <Spinner />
+                      ) : paymentMethod === "online" ? (
+                        "Pay & Place Order"
+                      ) : (
+                        "Place Order"
+                      )}
                     </button>
                   </>
                 )}
